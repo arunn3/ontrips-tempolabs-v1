@@ -42,6 +42,13 @@ const Home = ({ onMenuClick = () => {} }: HomeProps) => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <div className="flex gap-6 h-[calc(100vh-120px)]">
+          {/* Schedule View */}
+          <div className="flex-1">
+            <ScrollArea className="h-full">
+              <ScheduleView />
+            </ScrollArea>
+          </div>
+
           {/* Chat Interface */}
           {showChat && (
             <div className="w-[400px]">
@@ -50,13 +57,6 @@ const Home = ({ onMenuClick = () => {} }: HomeProps) => {
               </ScrollArea>
             </div>
           )}
-
-          {/* Schedule View */}
-          <div className="flex-1">
-            <ScrollArea className="h-full">
-              <ScheduleView />
-            </ScrollArea>
-          </div>
         </div>
       </main>
     </div>

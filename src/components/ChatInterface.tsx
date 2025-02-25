@@ -239,68 +239,76 @@ const DestinationDetailsComponent = ({
 }: {
   destination: Destination;
 }) => {
-  // Renamed to avoid conflict with component name
   if (!destination.details) return null;
 
   return (
     <div className="space-y-6 p-4 bg-white rounded-lg">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Activities Section */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Activities</h3>
-          <div className="space-y-3">
-            {destination.details.activities.map((activity, index) => (
-              <div className="flex gap-3 items-start">
-                {" "}
-                {/* Changed gap-4 to gap-3 */}
-                <img
-                  src={activity.image}
-                  alt={activity.name}
-                  className="w-12 h-12 rounded-md object-cover"
-                />
-                <div>
-                  <h4 className="font-medium">{activity.name}</h4>
-                  <p className="text-sm text-gray-600">
-                    {activity.description}
-                  </p>
-                  <div className="flex gap-1 mt-0 text-xs text-gray-500">
-                    {" "}
-                    {/* Changed gap-2 to gap-1 and mt-1 to mt-0 */}
-                    <span>{activity.duration}</span>
-                    <span>•</span>
-                    <span>{activity.price}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-6">
+        {destination.details.cities.map((city, cityIndex) => (
+          <Card key={cityIndex} className="p-4">
+            <div className="relative h-48 mb-4">
+              <img
+                src={city.image}
+                alt={city.name}
+                className="w-full h-full object-cover rounded-md"
+              />
+            </div>
+            <h3 className="text-xl font-semibold mb-2">{city.name}</h3>
+            <p className="text-gray-600 mb-4">{city.description}</p>
 
-        {/* Events Section */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Events</h3>
-          <div className="space-y-3">
-            {destination.details.events.map((event, index) => (
-              <div className="flex gap-3 items-start">
-                {" "}
-                {/* Changed gap-4 to gap-3 */}
-                <img
-                  src={event.image}
-                  alt={event.name}
-                  className="w-12 h-12 rounded-md object-cover"
-                />
-                <div>
-                  <h4 className="font-medium">{event.name}</h4>
-                  <p className="text-sm text-gray-600">{event.description}</p>
-                  <div className="text-xs text-gray-500 mt-0">
-                    {event.date}
-                  </div>{" "}
-                  {/* Changed mt-1 to mt-0 */}
-                </div>
+            {/* Activities Section */}
+            <div className="space-y-4 mb-6">
+              <h4 className="text-lg font-semibold">Activities</h4>
+              <div className="space-y-3">
+                {city.activities.map((activity, index) => (
+                  <div key={index} className="flex gap-3 items-start">
+                    <img
+                      src={activity.image}
+                      alt={activity.name}
+                      className="w-12 h-12 rounded-md object-cover"
+                    />
+                    <div>
+                      <h5 className="font-medium">{activity.name}</h5>
+                      <p className="text-sm text-gray-600">
+                        {activity.description}
+                      </p>
+                      <div className="flex gap-1 mt-1 text-xs text-gray-500">
+                        <span>{activity.duration}</span>
+                        <span>•</span>
+                        <span>{activity.price}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
+
+            {/* Events Section */}
+            <div className="space-y-4">
+              <h4 className="text-lg font-semibold">Events</h4>
+              <div className="space-y-3">
+                {city.events.map((event, index) => (
+                  <div key={index} className="flex gap-3 items-start">
+                    <img
+                      src={event.image}
+                      alt={event.name}
+                      className="w-12 h-12 rounded-md object-cover"
+                    />
+                    <div>
+                      <h5 className="font-medium">{event.name}</h5>
+                      <p className="text-sm text-gray-600">
+                        {event.description}
+                      </p>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {event.date}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        ))}
       </div>
 
       {/* Weather & Transportation */}
@@ -371,6 +379,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [selectedDestination, setSelectedDestination] =
     useState<Destination | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null); // Add state for details error
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -398,6 +408,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         setSelectedDestination((prev) => (prev ? { ...prev, details } : null));
       } catch (error) {
         console.error("Error fetching destination details:", error);
+        setDetailsError("Failed to load destination details");
       } finally {
         setIsLoadingDetails(false);
       }
@@ -477,6 +488,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       ]);
 
       try {
+        setIsSearching(true);
         const { searchDestinations } = await import("../lib/gemini");
         const fetchedDestinations = await searchDestinations(selections);
         setDestinations(fetchedDestinations); // Store destinations in state
@@ -512,6 +524,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             timestamp: new Date(),
           },
         ]);
+      } finally {
+        setIsSearching(false);
       }
     }
   };
@@ -608,17 +622,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-medium">Recommended Destinations</h3>
-                    <Badge variant="outline">
-                      {destinations.length} results found
-                    </Badge>
+                    {!isLoading && (
+                      <Badge variant="outline">
+                        {destinations.length} results found
+                      </Badge>
+                    )}
                   </div>
-                  {destinations.map((destination, index) => (
-                    <DestinationCardComponent
-                      key={index}
-                      destination={destination}
-                      onClick={() => setSelectedDestination(destination)}
-                    />
-                  ))}
+                  {isSearching ? (
+                    <div className="flex items-center justify-center gap-2 py-4">
+                      <Bot className="w-5 h-5 animate-spin" />
+                      <span>Searching for destinations...</span>
+                    </div>
+                  ) : (
+                    destinations.map((destination, index) => (
+                      <DestinationCardComponent
+                        key={index}
+                        destination={destination}
+                        onClick={() => setSelectedDestination(destination)}
+                      />
+                    ))
+                  )}
                 </div>
               ) : (
                 // Display DestinationDetails when a destination is selected
@@ -630,51 +653,51 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   >
                     ← Back to destinations
                   </Button>
-                  <DestinationDetailsComponent
-                    destination={selectedDestination}
-                  />{" "}
+                  {isLoadingDetails ? (
+                    <div className="flex items-center justify-center gap-2 py-8">
+                      <Bot className="w-5 h-5 animate-spin" />
+                      <span>Loading destination details...</span>
+                    </div>
+                  ) : detailsError ? (
+                    <div className="flex flex-col items-center justify-center gap-4 py-8">
+                      <div className="text-red-500">{detailsError}</div>
+                      <Button
+                        onClick={() => {
+                          setDetailsError(null);
+                          setIsLoadingDetails(true);
+                          setSelectedDestination({ ...selectedDestination });
+                        }}
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  ) : (
+                    <DestinationDetailsComponent
+                      destination={selectedDestination}
+                    />
+                  )}
                 </div>
               )}
             </div>
           </div>
         ) : (
           <div className="space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex items-start gap-3 ${message.type === "user" ? "flex-row-reverse" : ""}`}
-              >
-                <Avatar className="h-8 w-8">
-                  <AvatarImage
-                    src={
-                      message.type === "bot"
-                        ? "https://api.dicebear.com/7.x/bottts/svg?seed=travel-bot"
-                        : "https://api.dicebear.com/7.x/avataaars/svg?seed=user"
-                    }
-                  />
-                  <AvatarFallback>
-                    {message.type === "bot" ? <Bot /> : "U"}
-                  </AvatarFallback>
-                </Avatar>
-                <div
-                  className={`rounded-lg p-3 max-w-[80%] ${message.type === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
-                >
-                  {typeof message.content === "string" ? (
-                    <p className="text-sm whitespace-pre-wrap">
-                      {message.content}
-                    </p>
-                  ) : (
-                    message.content
-                  )}
-                  <span className="text-xs opacity-70 mt-1 block">
-                    {message.timestamp.toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </div>
+            {/* Only show current question */}
+            <div className="flex items-start gap-3">
+              <Avatar className="h-8 w-8">
+                <AvatarImage src="https://api.dicebear.com/7.x/bottts/svg?seed=travel-bot" />
+                <AvatarFallback>
+                  <Bot />
+                </AvatarFallback>
+              </Avatar>
+              <div className="rounded-lg p-3 max-w-[80%] bg-muted">
+                <p className="text-sm whitespace-pre-wrap">
+                  {currentQuestionIndex < preferenceOptions.length
+                    ? preferenceOptions[currentQuestionIndex].question
+                    : "Thanks! Let me find the perfect destinations based on your preferences..."}
+                </p>
               </div>
-            ))}
+            </div>
             {currentQuestionIndex < preferenceOptions.length && (
               <div className="mt-4">
                 <PreferenceSelector

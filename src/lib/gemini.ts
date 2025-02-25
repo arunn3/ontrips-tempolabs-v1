@@ -12,7 +12,10 @@ interface Destination {
   priceRange: string;
 }
 
-interface DestinationDetails {
+interface City {
+  name: string;
+  description: string;
+  image: string;
   activities: Array<{
     name: string;
     description: string;
@@ -27,14 +30,10 @@ interface DestinationDetails {
     date: string;
     image: string;
   }>;
-  attractions: Array<{
-    name: string;
-    description: string;
-    image: string;
-    visitDuration: string;
-    bestTime: string;
-    price: string;
-  }>;
+}
+
+interface DestinationDetails {
+  cities: City[];
   weather: {
     temperature: string;
     conditions: string;
@@ -62,9 +61,9 @@ export async function searchDestinations(
         .map(([category, values]) => `${category}: ${values.join(", ")}`)
         .join("\n")}
 
-      Generate exactly 3 travel destinations that match these preferences. Return only a JSON array with this exact structure for each destination:
+      Generate exactly 5 countries that match these preferences. Return only a JSON array with this exact structure for each destination:
       {
-        "title": "City, Country",
+        "title": "Country",
         "description": "Brief description",
         "image": "[One of: https://images.unsplash.com/photo-1499856871958-5b9627545d1a, https://images.unsplash.com/photo-1555992828-ca4dbe41d294, https://images.unsplash.com/photo-1523906834658-6e24ef2386f9]",
         "matchPercentage": 85,
@@ -113,39 +112,36 @@ export async function getDestinationDetails(
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-    const prompt = `Generate detailed information for ${destination} based on these preferences:
+    const prompt = `Generate top 3-5 cities in ${destination} with activities and events based on these preferences:
       ${Object.entries(preferences)
         .map(([category, values]) => `${category}: ${values.join(", ")}`)
         .join("\n")}
 
-      Return a JSON object with exactly this structure (use only these exact image URLs for images):
+      Return a JSON object with exactly this structure (use only these exact image URLs for images). IMPORTANT: Include exactly 3 activities per city, no more:
       {
-        "activities": [
+        "cities": [
           {
-            "name": "Activity name",
-            "description": "Brief description",
-            "duration": "2-3 hours",
+            "name": "City Name",
+            "description": "Brief city description",
             "image": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a",
-            "bestTime": "Morning",
-            "price": "$50"
-          }
-        ],
-        "events": [
-          {
-            "name": "Event name",
-            "description": "Brief description",
-            "date": "Specific date/period",
-            "image": "https://images.unsplash.com/photo-1555992828-ca4dbe41d294"
-          }
-        ],
-        "attractions": [
-          {
-            "name": "Attraction name",
-            "description": "Brief description",
-            "image": "https://images.unsplash.com/photo-1523906834658-6e24ef2386f9",
-            "visitDuration": "1-2 hours",
-            "bestTime": "Afternoon",
-            "price": "$25"
+            "activities": [
+              {
+                "name": "Activity name",
+                "description": "Brief description",
+                "duration": "2-3 hours",
+                "image": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a",
+                "bestTime": "Morning",
+                "price": "$50"
+              }
+            ],
+            "events": [
+              {
+                "name": "Event name",
+                "description": "Brief description",
+                "date": "Specific date/period",
+                "image": "https://images.unsplash.com/photo-1555992828-ca4dbe41d294"
+              }
+            ]
           }
         ],
         "weather": {
@@ -167,32 +163,44 @@ export async function getDestinationDetails(
       Important: Return ONLY the JSON object, no other text. Use the exact structure and image URLs shown above.`;
 
     const result = await model.generateContent(prompt);
-    const data = await result.response;
-    //console.log(data);
-    let text;
-    if (data.candidates && data.candidates[0]?.content?.parts) {
-      text = data.candidates[0].content.parts[0]?.text;
-      //setGeneratedText(text);
-      //console.log(text);
-    } else {
-      throw new Error(`Response data format incorrect!`);
-    }
+    const response = await result.response;
+    const text = response.text();
 
     try {
       // Clean up the response text
       let cleanText = text.trim();
+      console.log("Raw response:", cleanText);
+
+      // Remove any text before the first { and after the last }
+      const startIndex = cleanText.indexOf("{");
+      const endIndex = cleanText.lastIndexOf("}") + 1;
+
+      if (startIndex === -1 || endIndex === -1) {
+        console.error("Could not find JSON object markers");
+        throw new Error("Invalid response format");
+      }
+
+      cleanText = cleanText.substring(startIndex, endIndex);
+      console.log("Cleaned response:", cleanText);
 
       try {
-        // First try to parse the raw response
+        // First try to parse the cleaned response
         return JSON.parse(cleanText);
       } catch (e) {
-        // If that fails, try to extract JSON from the text
-        const jsonMatch = cleanText.match(/\{[\s\S]*\}/); // Match everything between { and }
-        if (!jsonMatch) {
-          throw new Error("Could not find JSON object in response");
-        }
-        const jsonStr = jsonMatch[0];
-        return JSON.parse(jsonStr);
+        console.error("First parse attempt failed:", e);
+
+        // Try to fix common JSON issues
+        cleanText = cleanText
+          .replace(/\n/g, "")
+          .replace(/\r/g, "")
+          .replace(/\t/g, "")
+          .replace(/,\s*([}\]])/g, "$1") // Remove trailing commas
+          .replace(/([{,])\s*([a-zA-Z0-9_]+)\s*:/g, '$1"$2":') // Quote unquoted keys
+          .replace(/\/\/.*$/gm, "") // Remove single-line comments
+          .replace(/\/\*[\s\S]*?\*\//g, ""); // Remove multi-line comments
+
+        console.log("Further cleaned response:", cleanText);
+        return JSON.parse(cleanText);
       }
     } catch (parseError) {
       console.error("Error parsing response:", parseError);
