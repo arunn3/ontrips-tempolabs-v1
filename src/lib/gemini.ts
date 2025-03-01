@@ -205,6 +205,7 @@ export async function generateItinerary(
           "days": [
             {
               "date": "YYYY-MM-DD",
+              "city": "${city.name}",
               "activities": [
                 {
                   "time": "HH:MM",
@@ -212,7 +213,9 @@ export async function generateItinerary(
                   "duration": "X hours",
                   "location": "${city.name}",
                   "description": "Brief description",
-                  "type": "attraction | meal | transport | rest"
+                  "type": "attraction | meal | transport | rest",
+                  "lat": "latitude",
+                  "long": "longitude"
                 }
               ]
             }

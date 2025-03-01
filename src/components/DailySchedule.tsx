@@ -39,6 +39,7 @@ interface Activity {
     lat: number;
     lng: number;
   };
+  city?: string;
 }
 
 interface DailyScheduleProps {
@@ -56,6 +57,7 @@ const defaultActivities: Activity[] = [
     duration: "1h",
     location: "Downtown",
     type: "meal",
+    city: "Vienna",
   },
   {
     id: "2",
@@ -64,6 +66,7 @@ const defaultActivities: Activity[] = [
     duration: "2h",
     location: "Museum District",
     type: "attraction",
+    city: "Vienna",
   },
   {
     id: "3",
@@ -72,6 +75,7 @@ const defaultActivities: Activity[] = [
     duration: "1.5h",
     location: "Market Square",
     type: "meal",
+    city: "Vienna",
   },
 ];
 
@@ -126,6 +130,7 @@ const DailySchedule = ({
         type: "rest",
         description: "Take some time to rest and recharge",
         coordinates: prevActivity.coordinates, // Copy coordinates from previous activity
+        city: prevActivity.city || "", // Copy city from previous activity
       };
 
       // Insert the new activity at the right position
