@@ -671,6 +671,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               new Date(),
                               duration,
                             );
+                            console.log("Generated itinerary:", itinerary);
+                            // Store the itinerary in localStorage
+                            localStorage.setItem(
+                              "generatedItinerary",
+                              JSON.stringify(itinerary),
+                            );
+
                             setDestinations((prev) =>
                               prev.map((d) =>
                                 d.title === destination.title
@@ -682,6 +689,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               ...destination,
                               itinerary,
                             });
+
+                            // Refresh the page to update the schedule view
+                            window.location.reload();
                           } catch (error) {
                             console.error("Error generating itinerary:", error);
                           } finally {

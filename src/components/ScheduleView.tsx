@@ -64,11 +64,74 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   selectedDate = new Date(),
   onDateChange = () => {},
 }) => {
+  // Check if there's an itinerary in localStorage
+  const [selectedDay, setSelectedDay] = React.useState(0);
+  const [itineraryDays, setItineraryDays] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    try {
+      const storedItinerary = localStorage.getItem("generatedItinerary");
+      if (storedItinerary) {
+        const parsedItinerary = JSON.parse(storedItinerary);
+        console.log("Found stored itinerary:", parsedItinerary);
+
+        // Store all days from the itinerary
+        if (parsedItinerary.days && parsedItinerary.days.length > 0) {
+          setItineraryDays(parsedItinerary.days);
+
+          // Convert the first day's activities to the format expected by DailySchedule
+          const firstDay = parsedItinerary.days[0];
+          const convertedActivities = firstDay.activities.map(
+            (activity, index) => ({
+              id: index.toString(),
+              time: activity.time,
+              title: activity.title,
+              duration: activity.duration,
+              location: activity.location,
+              description: activity.description,
+              type: activity.type,
+              coordinates: {
+                lat: 48.8584 + index * 0.002,
+                lng: 2.2945 + index * 0.005,
+              },
+            }),
+          );
+          setActivitiesList(convertedActivities);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading itinerary from localStorage:", error);
+    }
+  }, []);
+
+  // Function to change the selected day
+  const handleDayChange = (dayIndex: number) => {
+    if (itineraryDays.length > dayIndex) {
+      setSelectedDay(dayIndex);
+      const dayData = itineraryDays[dayIndex];
+      const convertedActivities = dayData.activities.map((activity, index) => ({
+        id: index.toString(),
+        time: activity.time,
+        title: activity.title,
+        duration: activity.duration,
+        location: activity.location,
+        description: activity.description,
+        type: activity.type,
+        coordinates: {
+          lat: 48.8584 + index * 0.002,
+          lng: 2.2945 + index * 0.005,
+        },
+      }));
+      setActivitiesList(convertedActivities);
+    }
+  };
+
+  const [activitiesList, setActivitiesList] = React.useState(activities);
   const [selectedActivity, setSelectedActivity] = React.useState<string>(
-    activities[0]?.id,
+    activitiesList[0]?.id,
   );
 
-  const locations: Location[] = activities.map((activity) => ({
+  const locations: Location[] = activitiesList.map((activity) => ({
     id: activity.id,
     name: activity.title,
     lat: activity.coordinates.lat,
@@ -84,27 +147,49 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
             <div className="flex items-center gap-2">
               <Calendar className="w-5 h-5 text-gray-500" />
               <h2 className="text-lg font-semibold">
-                {selectedDate.toLocaleDateString("en-US", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })}
+                {itineraryDays.length > 0 && itineraryDays[selectedDay]
+                  ? itineraryDays[selectedDay].date
+                  : selectedDate.toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })}
               </h2>
             </div>
-            <Button variant="outline" size="sm">
-              <Filter className="w-4 h-4 mr-2" />
-              Filters
-            </Button>
+            <div className="flex gap-2">
+              {itineraryDays.length > 0 && (
+                <div className="flex gap-1">
+                  {itineraryDays.map((day, index) => (
+                    <Button
+                      key={index}
+                      variant={selectedDay === index ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleDayChange(index)}
+                    >
+                      Day {index + 1}
+                    </Button>
+                  ))}
+                </div>
+              )}
+              <Button variant="outline" size="sm">
+                <Filter className="w-4 h-4 mr-2" />
+                Filters
+              </Button>
+            </div>
           </div>
         </Card>
 
         <ScrollArea className="flex-1">
           <DailySchedule
-            activities={activities}
-            onReorder={(newActivities) =>
-              console.log("Reordered:", newActivities)
-            }
-            onDelete={(id) => console.log("Delete:", id)}
+            activities={activitiesList}
+            onReorder={(newActivities) => {
+              console.log("Reordered:", newActivities);
+              setActivitiesList(newActivities);
+            }}
+            onDelete={(id) => {
+              console.log("Delete:", id);
+              setActivitiesList(activitiesList.filter((a) => a.id !== id));
+            }}
             onAdd={() => console.log("Add new activity")}
           />
         </ScrollArea>
@@ -116,8 +201,8 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
           selectedLocation={selectedActivity}
           onLocationSelect={setSelectedActivity}
           center={{
-            lat: activities[0]?.coordinates.lat || 48.8584,
-            lng: activities[0]?.coordinates.lng || 2.2945,
+            lat: activitiesList[0]?.coordinates.lat || 48.8584,
+            lng: activitiesList[0]?.coordinates.lng || 2.2945,
           }}
         />
       </div>

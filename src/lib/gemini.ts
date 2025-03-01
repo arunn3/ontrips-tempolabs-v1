@@ -1,7 +1,12 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Initialize the model
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
+const genAI = new GoogleGenerativeAI(
+  import.meta.env.VITE_GEMINI_API_KEY || "",
+  {
+    apiVersion: "v1",
+  },
+);
 
 interface Destination {
   title: string;
@@ -54,7 +59,7 @@ export async function searchDestinations(
   preferences: Record<string, string[]>,
 ): Promise<Destination[]> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
     const prompt = `Based on these travel preferences:
       ${Object.entries(preferences)
@@ -124,6 +129,12 @@ export interface GeneratedItinerary {
   estimatedCost: string;
 }
 
+interface CityInfo {
+  name: string;
+  description: string;
+  daysToSpend: number;
+}
+
 export async function generateItinerary(
   destination: string,
   preferences: Record<string, string[]>,
@@ -131,59 +142,139 @@ export async function generateItinerary(
   duration: number,
 ): Promise<GeneratedItinerary> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
-    const prompt = `Generate a detailed day-by-day itinerary for ${destination} based on these preferences:
+    // Step 1: Get list of cities within the country
+    const citiesPrompt = `Based on these travel preferences:
       ${Object.entries(preferences)
         .map(([category, values]) => `${category}: ${values.join(", ")}`)
         .join("\n")}
       
-      Duration: ${duration} days
-      Start Date: ${startDate.toLocaleDateString()}
+      Generate a list of ${Math.min(duration, 3)} cities to visit in ${destination} for a ${duration}-day trip.
+      Return only a JSON array with this structure:
+      [
+        {
+          "name": "City Name",
+          "description": "Brief description of why this city matches preferences",
+          "daysToSpend": 2
+        }
+      ]
+      
+      Important: Make sure the total daysToSpend across all cities equals ${duration}.`;
 
-      **RESPONSE INSTRUCTIONS:**
+    const citiesResult = await model.generateContent(citiesPrompt);
+    const citiesResponse = await citiesResult.response;
+    const citiesText = citiesResponse.text();
 
-      **IMPORTANT: You MUST respond with VALID JSON only.  No other text or explanations should be included in your response.**
-
-      **JSON FORMAT:**
-      json
-      {
-        "days": [
-          {
-            "date": "YYYY-MM-DD",
-            "activities": [
-              {
-                "time": "HH:MM",
-                "title": "Activity name",
-                "duration": "X hours",
-                "location": "Location name",
-                "description": "Brief description",
-                "type": "attraction | meal | transport | rest"
-              }
-            ]
-          }
-        ],
-        "summary": "Brief trip summary",
-        "totalActivities": 25,
-        "estimatedCost": "$X,XXX"
-      }`;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-
+    let cities: CityInfo[] = [];
     try {
-      let cleanText = text.trim();
-      const startIndex = cleanText.indexOf("{");
-      const endIndex = cleanText.lastIndexOf("}") + 1;
+      let cleanText = citiesText.trim();
+      const startIndex = cleanText.indexOf("[");
+      const endIndex = cleanText.lastIndexOf("]") + 1;
       cleanText = cleanText.substring(startIndex, endIndex);
-      console.log("cleanText:", cleanText); // ADD THIS LINE
-
-      return JSON.parse(cleanText);
+      cities = JSON.parse(cleanText);
     } catch (parseError) {
-      console.error("Error parsing itinerary:", parseError);
-      throw new Error("Failed to generate itinerary");
+      console.error("Error parsing cities:", parseError);
+      throw new Error("Failed to generate city list");
     }
+
+    // Step 2: Generate itinerary for each city
+    let allDays: DayItinerary[] = [];
+    let currentDate = new Date(startDate);
+    let totalActivities = 0;
+    let estimatedCostSum = 0;
+
+    for (const city of cities) {
+      const cityDuration = city.daysToSpend;
+
+      const cityPrompt = `Generate a detailed day-by-day itinerary for ${city.name}, ${destination} based on these preferences:
+        ${Object.entries(preferences)
+          .map(([category, values]) => `${category}: ${values.join(", ")}`)
+          .join("\n")}
+        
+        Duration: ${cityDuration} days
+        Start Date: ${currentDate.toLocaleDateString()}
+
+        **RESPONSE INSTRUCTIONS:**
+
+        **IMPORTANT: You MUST respond with VALID JSON only.  No other text or explanations should be included in your response.**
+
+        **JSON FORMAT:**
+        json
+        {
+          "days": [
+            {
+              "date": "YYYY-MM-DD",
+              "activities": [
+                {
+                  "time": "HH:MM",
+                  "title": "Activity name",
+                  "duration": "X hours",
+                  "location": "${city.name}",
+                  "description": "Brief description",
+                  "type": "attraction | meal | transport | rest"
+                }
+              ]
+            }
+          ],
+          "summary": "Brief summary of the visit to ${city.name}",
+          "totalActivities": 10,
+          "estimatedCost": "$X,XXX"
+        }`;
+
+      // Add a 5 second delay between API calls
+      if (cities.indexOf(city) > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10000));
+      }
+
+      const cityResult = await model.generateContent(cityPrompt);
+      const cityResponse = await cityResult.response;
+      const cityText = cityResponse.text();
+
+      try {
+        let cleanText = cityText.trim();
+        const startIndex = cleanText.indexOf("{");
+        const endIndex = cleanText.lastIndexOf("}") + 1;
+        cleanText = cleanText.substring(startIndex, endIndex);
+        console.log("cleanText:", cleanText); // ADD THIS LINE
+
+        const cityItinerary = JSON.parse(cleanText);
+
+        // Add city days to overall itinerary
+        allDays = [...allDays, ...cityItinerary.days];
+
+        // Update totals
+        totalActivities += cityItinerary.totalActivities;
+
+        // Extract cost as number for summing
+        const costMatch = cityItinerary.estimatedCost.match(/\$([\d,]+)/);
+        if (costMatch && costMatch[1]) {
+          const costValue = parseInt(costMatch[1].replace(/,/g, ""));
+          if (!isNaN(costValue)) {
+            estimatedCostSum += costValue;
+          }
+        }
+
+        // Update current date for next city
+        currentDate.setDate(currentDate.getDate() + cityDuration);
+      } catch (parseError) {
+        console.error(`Error parsing itinerary for ${city.name}:`, parseError);
+        throw new Error(`Failed to generate itinerary for ${city.name}`);
+      }
+    }
+
+    // Format the final itinerary
+    const formattedCost = `$${estimatedCostSum.toLocaleString()}`;
+    const citySummary = cities
+      .map((city) => `${city.name} (${city.daysToSpend} days)`)
+      .join(", ");
+
+    return {
+      days: allDays,
+      summary: `${duration}-day trip to ${destination} visiting ${citySummary}.`,
+      totalActivities,
+      estimatedCost: formattedCost,
+    };
   } catch (error) {
     console.error("Error calling Gemini API:", error);
     throw error;
@@ -195,7 +286,7 @@ export async function getDestinationDetails(
   preferences: Record<string, string[]>,
 ): Promise<DestinationDetails> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
     const prompt = `Generate top 3-5 cities in ${destination} with activities and events based on these preferences:
       ${Object.entries(preferences)
