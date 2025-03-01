@@ -91,16 +91,14 @@ const DailySchedule = ({
     }));
   };
 
-  // Group activities by location
-  const locationGroups = React.useMemo(() => {
-    const groups: Record<string, Activity[]> = {};
-    items.forEach((activity) => {
-      if (!groups[activity.location]) {
-        groups[activity.location] = [];
-      }
-      groups[activity.location].push(activity);
+  // Sort activities by time
+  const sortedActivities = React.useMemo(() => {
+    return [...items].sort((a, b) => {
+      // Convert time strings to comparable values (e.g., "09:00" to 900, "13:30" to 1330)
+      const timeA = parseInt(a.time.replace(":", ""));
+      const timeB = parseInt(b.time.replace(":", ""));
+      return timeA - timeB;
     });
-    return groups;
   }, [items]);
 
   const getActivityTypeColor = (type?: string) => {
@@ -133,100 +131,86 @@ const DailySchedule = ({
           <Reorder.Group
             values={items}
             onReorder={handleReorder}
-            className="space-y-6 pb-4"
+            className="space-y-3 pb-4"
           >
-            {Object.entries(locationGroups).map(
-              ([location, locationActivities]) => (
-                <div key={location} className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-primary" />
-                    <h3 className="font-semibold text-lg">{location}</h3>
-                  </div>
+            {sortedActivities.map((activity) => (
+              <Reorder.Item
+                key={activity.id}
+                value={activity}
+                className="outline-none"
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  whileHover={{ scale: 1.01 }}
+                  onClick={() => toggleExpand(activity.id)}
+                >
+                  <Card className="p-4 cursor-move bg-white border hover:border-blue-200 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <GripVertical className="w-5 h-5 text-gray-400" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Drag to reorder</p>
+                        </TooltipContent>
+                      </Tooltip>
 
-                  <div className="space-y-3 pl-6">
-                    {locationActivities.map((activity) => (
-                      <Reorder.Item
-                        key={activity.id}
-                        value={activity}
-                        className="outline-none"
-                      >
-                        <motion.div
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -20 }}
-                          whileHover={{ scale: 1.01 }}
-                          onClick={() => toggleExpand(activity.id)}
-                        >
-                          <Card className="p-4 cursor-move bg-white border hover:border-blue-200 transition-colors">
-                            <div className="flex items-center gap-4">
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <GripVertical className="w-5 h-5 text-gray-400" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Drag to reorder</p>
-                                </TooltipContent>
-                              </Tooltip>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Clock className="w-4 h-4 text-gray-500" />
+                          <span className="text-sm text-gray-600">
+                            {activity.time}
+                          </span>
+                          <span className="text-sm text-gray-400">
+                            ({activity.duration})
+                          </span>
+                          {activity.type && (
+                            <Badge
+                              variant="secondary"
+                              className={getActivityTypeColor(activity.type)}
+                            >
+                              {activity.type}
+                            </Badge>
+                          )}
+                        </div>
+                        <h3 className="font-medium">{activity.title}</h3>
+                        <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                          <MapPin className="h-3 w-3" />
+                          <span>{activity.location}</span>
+                        </div>
 
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Clock className="w-4 h-4 text-gray-500" />
-                                  <span className="text-sm text-gray-600">
-                                    {activity.time}
-                                  </span>
-                                  <span className="text-sm text-gray-400">
-                                    ({activity.duration})
-                                  </span>
-                                  {activity.type && (
-                                    <Badge
-                                      variant="secondary"
-                                      className={getActivityTypeColor(
-                                        activity.type,
-                                      )}
-                                    >
-                                      {activity.type}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <h3 className="font-medium">
-                                  {activity.title}
-                                </h3>
+                        {expandedItems[activity.id] && activity.description && (
+                          <div className="mt-2 pt-2 border-t text-sm text-gray-600">
+                            {activity.description}
+                          </div>
+                        )}
+                      </div>
 
-                                {expandedItems[activity.id] &&
-                                  activity.description && (
-                                    <div className="mt-2 pt-2 border-t text-sm text-gray-600">
-                                      {activity.description}
-                                    </div>
-                                  )}
-                              </div>
-
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onDelete(activity.id);
-                                    }}
-                                    className="text-gray-400 hover:text-red-500"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Delete activity</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                          </Card>
-                        </motion.div>
-                      </Reorder.Item>
-                    ))}
-                  </div>
-                </div>
-              ),
-            )}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDelete(activity.id);
+                            }}
+                            className="text-gray-400 hover:text-red-500"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Delete activity</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </Card>
+                </motion.div>
+              </Reorder.Item>
+            ))}
           </Reorder.Group>
         </TooltipProvider>
       </ScrollArea>

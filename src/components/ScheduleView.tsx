@@ -37,26 +37,26 @@ const defaultActivities: Activity[] = [
   {
     id: "1",
     time: "09:00",
-    title: "Breakfast at Cafe Central",
+    title: "Breakfast at Tokyo Cafe",
     duration: "1h",
-    location: "Downtown",
-    coordinates: { lat: 48.8584, lng: 2.2945 },
+    location: "Shibuya, Tokyo",
+    coordinates: { lat: 35.6612, lng: 139.704 },
   },
   {
     id: "2",
     time: "10:30",
-    title: "City Museum Tour",
+    title: "Tokyo National Museum Tour",
     duration: "2h",
-    location: "Museum District",
-    coordinates: { lat: 48.8606, lng: 2.3376 },
+    location: "Ueno, Tokyo",
+    coordinates: { lat: 35.7188, lng: 139.7765 },
   },
   {
     id: "3",
     time: "13:00",
-    title: "Lunch at Local Market",
+    title: "Lunch at Tsukiji Market",
     duration: "1.5h",
-    location: "Market Square",
-    coordinates: { lat: 48.8566, lng: 2.3522 },
+    location: "Tsukiji, Tokyo",
+    coordinates: { lat: 35.6654, lng: 139.7707 },
   },
 ];
 
@@ -93,8 +93,8 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
               description: activity.description,
               type: activity.type,
               coordinates: {
-                lat: 48.8584 + index * 0.002,
-                lng: 2.2945 + index * 0.005,
+                lat: 35.6612 + index * 0.002,
+                lng: 139.704 + index * 0.005,
               },
             }),
           );
@@ -106,24 +106,89 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
     }
   }, []);
 
+  // Function to get coordinates based on location name
+  const getCoordinatesForLocation = (locationText: string) => {
+    const locationLower = locationText.toLowerCase();
+
+    // City coordinates mapping
+    const cityCoordinates: Record<string, { lat: number; lng: number }> = {
+      tokyo: { lat: 35.6762, lng: 139.6503 },
+      kyoto: { lat: 35.0116, lng: 135.7681 },
+      osaka: { lat: 34.6937, lng: 135.5023 },
+      "new york": { lat: 40.7128, lng: -74.006 },
+      london: { lat: 51.5074, lng: -0.1278 },
+      paris: { lat: 48.8566, lng: 2.3522 },
+      rome: { lat: 41.9028, lng: 12.4964 },
+      sydney: { lat: -33.8688, lng: 151.2093 },
+      barcelona: { lat: 41.3851, lng: 2.1734 },
+      amsterdam: { lat: 52.3676, lng: 4.9041 },
+      berlin: { lat: 52.52, lng: 13.405 },
+      venice: { lat: 45.4408, lng: 12.3155 },
+      florence: { lat: 43.7696, lng: 11.2558 },
+      milan: { lat: 45.4642, lng: 9.19 },
+    };
+
+    // Check if any city name is in the location text
+    for (const [city, coords] of Object.entries(cityCoordinates)) {
+      if (locationLower.includes(city)) {
+        // Add a small random offset to prevent markers from stacking exactly
+        return {
+          lat: coords.lat + (Math.random() - 0.5) * 0.01,
+          lng: coords.lng + (Math.random() - 0.5) * 0.01,
+        };
+      }
+    }
+
+    // Default to Tokyo with random offset if no match
+    return {
+      lat: 35.6762 + (Math.random() - 0.5) * 0.02,
+      lng: 139.6503 + (Math.random() - 0.5) * 0.02,
+    };
+  };
+
   // Function to change the selected day
   const handleDayChange = (dayIndex: number) => {
     if (itineraryDays.length > dayIndex) {
       setSelectedDay(dayIndex);
       const dayData = itineraryDays[dayIndex];
-      const convertedActivities = dayData.activities.map((activity, index) => ({
-        id: index.toString(),
-        time: activity.time,
-        title: activity.title,
-        duration: activity.duration,
-        location: activity.location,
-        description: activity.description,
-        type: activity.type,
-        coordinates: {
-          lat: 48.8584 + index * 0.002,
-          lng: 2.2945 + index * 0.005,
-        },
-      }));
+
+      // Extract city from the day's activities to center the map
+      let dayCity = "";
+      if (dayData.activities && dayData.activities.length > 0) {
+        // Try to find a city name in the first few activities
+        for (let i = 0; i < Math.min(3, dayData.activities.length); i++) {
+          const activity = dayData.activities[i];
+          const locationText = activity.location || activity.title || "";
+
+          // Common city extraction logic - look for text after commas
+          const parts = locationText.split(",");
+          if (parts.length > 1) {
+            dayCity = parts[parts.length - 1].trim();
+            break;
+          }
+        }
+      }
+
+      const convertedActivities = dayData.activities.map((activity, index) => {
+        // Get coordinates based on the activity location or title
+        const locationText = activity.location || activity.title || "";
+        const coordinates = getCoordinatesForLocation(locationText);
+
+        return {
+          id: index.toString(),
+          time: activity.time,
+          title: activity.title,
+          duration: activity.duration,
+          location: activity.location,
+          description: activity.description,
+          type: activity.type,
+          coordinates: {
+            lat: activity.coordinates?.lat || coordinates.lat,
+            lng: activity.coordinates?.lng || coordinates.lng,
+          },
+        };
+      });
+
       setActivitiesList(convertedActivities);
     }
   };
@@ -133,13 +198,36 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
     activitiesList[0]?.id,
   );
 
-  const locations: Location[] = activitiesList.map((activity) => ({
-    id: activity.id,
-    name: activity.title,
-    lat: activity.coordinates.lat,
-    lng: activity.coordinates.lng,
-    type: "attraction",
-  }));
+  const locations: Location[] = activitiesList.map((activity) => {
+    // Determine the type based on the activity title or type
+    let type: "attraction" | "restaurant" | "hotel" = "attraction";
+    if (activity.type) {
+      if (activity.type === "meal") type = "restaurant";
+      else if (activity.type === "rest") type = "hotel";
+    } else if (
+      activity.title.toLowerCase().includes("breakfast") ||
+      activity.title.toLowerCase().includes("lunch") ||
+      activity.title.toLowerCase().includes("dinner") ||
+      activity.title.toLowerCase().includes("cafe") ||
+      activity.title.toLowerCase().includes("restaurant")
+    ) {
+      type = "restaurant";
+    } else if (
+      activity.title.toLowerCase().includes("hotel") ||
+      activity.title.toLowerCase().includes("rest") ||
+      activity.title.toLowerCase().includes("accommodation")
+    ) {
+      type = "hotel";
+    }
+
+    return {
+      id: activity.id,
+      name: activity.title,
+      lat: activity.coordinates.lat,
+      lng: activity.coordinates.lng,
+      type,
+    };
+  });
 
   return (
     <div className="h-[calc(100vh-120px)] w-full bg-gray-50 p-6 flex flex-col overflow-hidden">
@@ -188,23 +276,26 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
       <Tabs
         value={activeTab}
         onValueChange={setActiveTab}
-        className="w-full flex-1 flex flex-col overflow-hidden"
+        className="w-full flex-1 flex flex-row overflow-hidden"
       >
-        <TabsList className="mb-4 flex-shrink-0">
-          <TabsTrigger value="schedule" className="flex items-center gap-2">
+        <TabsList className="flex-shrink-0 flex-col h-auto mr-4 p-1">
+          <TabsTrigger
+            value="schedule"
+            className="flex items-center gap-2 justify-start w-full mb-1"
+          >
             <List className="h-4 w-4" />
             Schedule
           </TabsTrigger>
-          <TabsTrigger value="map" className="flex items-center gap-2">
+          <TabsTrigger
+            value="map"
+            className="flex items-center gap-2 justify-start w-full"
+          >
             <Map className="h-4 w-4" />
             Map
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent
-          value="schedule"
-          className="flex-1 h-[calc(100%-60px)] overflow-hidden"
-        >
+        <TabsContent value="schedule" className="flex-1 h-full overflow-hidden">
           <DailySchedule
             activities={activitiesList}
             onReorder={(newActivities) => {
@@ -219,17 +310,14 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
           />
         </TabsContent>
 
-        <TabsContent
-          value="map"
-          className="flex-1 h-[calc(100%-60px)] overflow-hidden"
-        >
+        <TabsContent value="map" className="flex-1 h-full overflow-hidden">
           <MapView
             locations={locations}
             selectedLocation={selectedActivity}
             onLocationSelect={setSelectedActivity}
             center={{
-              lat: activitiesList[0]?.coordinates.lat || 48.8584,
-              lng: activitiesList[0]?.coordinates.lng || 2.2945,
+              lat: locations[0]?.lat || 35.6612,
+              lng: locations[0]?.lng || 139.704,
             }}
           />
         </TabsContent>
