@@ -105,6 +105,91 @@ export async function searchDestinations(
   }
 }
 
+interface DayItinerary {
+  date: string;
+  activities: Array<{
+    time: string;
+    title: string;
+    duration: string;
+    location: string;
+    description: string;
+    type: "attraction" | "meal" | "transport" | "rest";
+  }>;
+}
+
+export interface GeneratedItinerary {
+  days: DayItinerary[];
+  summary: string;
+  totalActivities: number;
+  estimatedCost: string;
+}
+
+export async function generateItinerary(
+  destination: string,
+  preferences: Record<string, string[]>,
+  startDate: Date,
+  duration: number,
+): Promise<GeneratedItinerary> {
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+    const prompt = `Generate a detailed day-by-day itinerary for ${destination} based on these preferences:
+      ${Object.entries(preferences)
+        .map(([category, values]) => `${category}: ${values.join(", ")}`)
+        .join("\n")}
+      
+      Duration: ${duration} days
+      Start Date: ${startDate.toLocaleDateString()}
+
+      **RESPONSE INSTRUCTIONS:**
+
+      **IMPORTANT: You MUST respond with VALID JSON only.  No other text or explanations should be included in your response.**
+
+      **JSON FORMAT:**
+      json
+      {
+        "days": [
+          {
+            "date": "YYYY-MM-DD",
+            "activities": [
+              {
+                "time": "HH:MM",
+                "title": "Activity name",
+                "duration": "X hours",
+                "location": "Location name",
+                "description": "Brief description",
+                "type": "attraction | meal | transport | rest"
+              }
+            ]
+          }
+        ],
+        "summary": "Brief trip summary",
+        "totalActivities": 25,
+        "estimatedCost": "$X,XXX"
+      }`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    try {
+      let cleanText = text.trim();
+      const startIndex = cleanText.indexOf("{");
+      const endIndex = cleanText.lastIndexOf("}") + 1;
+      cleanText = cleanText.substring(startIndex, endIndex);
+      console.log("cleanText:", cleanText); // ADD THIS LINE
+
+      return JSON.parse(cleanText);
+    } catch (parseError) {
+      console.error("Error parsing itinerary:", parseError);
+      throw new Error("Failed to generate itinerary");
+    }
+  } catch (error) {
+    console.error("Error calling Gemini API:", error);
+    throw error;
+  }
+}
+
 export async function getDestinationDetails(
   destination: string,
   preferences: Record<string, string[]>,

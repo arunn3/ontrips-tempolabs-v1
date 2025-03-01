@@ -176,16 +176,18 @@ interface Destination {
   matchPercentage: number;
   rating: number;
   priceRange: string;
-  details?: DestinationDetailsType; // Using the renamed interface
+  details?: DestinationDetailsType;
+  itinerary?: GeneratedItinerary;
 }
 
 const DestinationCardComponent = ({
-  // Renamed to avoid conflict with component name
   destination,
   onClick,
+  onGenerateItinerary,
 }: {
   destination: Destination;
   onClick?: () => void;
+  onGenerateItinerary?: () => void;
 }) => (
   <div
     className="bg-white rounded-lg shadow-md overflow-hidden mb-4 cursor-pointer transition-all hover:shadow-lg"
@@ -227,9 +229,21 @@ const DestinationCardComponent = ({
         </div>
       </div>
       <p className="text-sm text-gray-600 mb-2">{destination.description}</p>
-      <p className="text-sm font-medium text-gray-900">
-        {destination.priceRange}
-      </p>
+      <div className="flex items-center justify-between mt-2">
+        <p className="text-sm font-medium text-gray-900">
+          {destination.priceRange}
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            onGenerateItinerary?.();
+          }}
+        >
+          Generate Itinerary
+        </Button>
+      </div>
     </div>
   </div>
 );
@@ -380,7 +394,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     useState<Destination | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [detailsError, setDetailsError] = useState<string | null>(null); // Add state for details error
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [isGeneratingItinerary, setIsGeneratingItinerary] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -639,6 +654,40 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         key={index}
                         destination={destination}
                         onClick={() => setSelectedDestination(destination)}
+                        onGenerateItinerary={async () => {
+                          try {
+                            setIsGeneratingItinerary(true);
+                            const { generateItinerary } = await import(
+                              "../lib/gemini"
+                            );
+                            const duration = selections.duration?.[0]
+                              ?.toLowerCase()
+                              .includes("week")
+                              ? 7
+                              : 3;
+                            const itinerary = await generateItinerary(
+                              destination.title,
+                              selections,
+                              new Date(),
+                              duration,
+                            );
+                            setDestinations((prev) =>
+                              prev.map((d) =>
+                                d.title === destination.title
+                                  ? { ...d, itinerary }
+                                  : d,
+                              ),
+                            );
+                            setSelectedDestination({
+                              ...destination,
+                              itinerary,
+                            });
+                          } catch (error) {
+                            console.error("Error generating itinerary:", error);
+                          } finally {
+                            setIsGeneratingItinerary(false);
+                          }
+                        }}
                       />
                     ))
                   )}
