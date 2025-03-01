@@ -119,8 +119,8 @@ const DailySchedule = ({
   };
 
   return (
-    <Card className="w-full h-full bg-white p-6 overflow-hidden">
-      <div className="flex justify-between items-center mb-6">
+    <Card className="w-full h-full bg-white p-6 flex flex-col">
+      <div className="flex justify-between items-center mb-6 flex-shrink-0">
         <h2 className="text-2xl font-semibold">Daily Schedule</h2>
         <Button onClick={onAdd} size="sm">
           <Plus className="w-4 h-4 mr-2" />
@@ -128,12 +128,12 @@ const DailySchedule = ({
         </Button>
       </div>
 
-      <ScrollArea className="h-[calc(100%-80px)]">
+      <ScrollArea className="flex-1">
         <TooltipProvider>
           <Reorder.Group
             values={items}
             onReorder={handleReorder}
-            className="space-y-6"
+            className="space-y-6 pb-4"
           >
             {Object.entries(locationGroups).map(
               ([location, locationActivities]) => (

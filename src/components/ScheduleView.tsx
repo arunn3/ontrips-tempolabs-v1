@@ -3,8 +3,9 @@ import DailySchedule from "./DailySchedule";
 import MapView from "./MapView";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { Calendar, Filter } from "lucide-react";
+import { Calendar, Filter, Map, List } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 interface Activity {
   id: string;
@@ -67,6 +68,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   // Check if there's an itinerary in localStorage
   const [selectedDay, setSelectedDay] = React.useState(0);
   const [itineraryDays, setItineraryDays] = React.useState<any[]>([]);
+  const [activeTab, setActiveTab] = React.useState("schedule");
 
   React.useEffect(() => {
     try {
@@ -140,46 +142,69 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   }));
 
   return (
-    <div className="flex h-full w-full gap-6 bg-gray-50 p-6">
-      <div className="w-[600px] flex flex-col gap-6">
-        <Card className="p-4 bg-white">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-gray-500" />
-              <h2 className="text-lg font-semibold">
-                {itineraryDays.length > 0 && itineraryDays[selectedDay]
-                  ? itineraryDays[selectedDay].date
-                  : selectedDate.toLocaleDateString("en-US", {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                    })}
-              </h2>
-            </div>
-            <div className="flex gap-2">
-              {itineraryDays.length > 0 && (
-                <div className="flex gap-1">
+    <div className="h-[calc(100vh-120px)] w-full bg-gray-50 p-6 flex flex-col overflow-hidden">
+      <Card className="p-4 bg-white mb-6 flex-shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-gray-500" />
+            <h2 className="text-lg font-semibold">
+              {itineraryDays.length > 0 && itineraryDays[selectedDay]
+                ? itineraryDays[selectedDay].date
+                : selectedDate.toLocaleDateString("en-US", {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                  })}
+            </h2>
+          </div>
+          <div className="flex flex-col gap-3">
+            {itineraryDays.length > 0 && (
+              <ScrollArea className="w-full">
+                <div className="flex gap-1 p-1">
                   {itineraryDays.map((day, index) => (
                     <Button
                       key={index}
                       variant={selectedDay === index ? "default" : "outline"}
                       size="sm"
                       onClick={() => handleDayChange(index)}
+                      className="whitespace-nowrap"
                     >
                       Day {index + 1}
                     </Button>
                   ))}
                 </div>
-              )}
+              </ScrollArea>
+            )}
+            <div className="flex-shrink-0">
               <Button variant="outline" size="sm">
                 <Filter className="w-4 h-4 mr-2" />
                 Filters
               </Button>
             </div>
           </div>
-        </Card>
+        </div>
+      </Card>
 
-        <ScrollArea className="flex-1">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="w-full flex-1 flex flex-col overflow-hidden"
+      >
+        <TabsList className="mb-4 flex-shrink-0">
+          <TabsTrigger value="schedule" className="flex items-center gap-2">
+            <List className="h-4 w-4" />
+            Schedule
+          </TabsTrigger>
+          <TabsTrigger value="map" className="flex items-center gap-2">
+            <Map className="h-4 w-4" />
+            Map
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent
+          value="schedule"
+          className="flex-1 h-[calc(100%-60px)] overflow-hidden"
+        >
           <DailySchedule
             activities={activitiesList}
             onReorder={(newActivities) => {
@@ -192,20 +217,23 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
             }}
             onAdd={() => console.log("Add new activity")}
           />
-        </ScrollArea>
-      </div>
+        </TabsContent>
 
-      <div className="flex-1">
-        <MapView
-          locations={locations}
-          selectedLocation={selectedActivity}
-          onLocationSelect={setSelectedActivity}
-          center={{
-            lat: activitiesList[0]?.coordinates.lat || 48.8584,
-            lng: activitiesList[0]?.coordinates.lng || 2.2945,
-          }}
-        />
-      </div>
+        <TabsContent
+          value="map"
+          className="flex-1 h-[calc(100%-60px)] overflow-hidden"
+        >
+          <MapView
+            locations={locations}
+            selectedLocation={selectedActivity}
+            onLocationSelect={setSelectedActivity}
+            center={{
+              lat: activitiesList[0]?.coordinates.lat || 48.8584,
+              lng: activitiesList[0]?.coordinates.lng || 2.2945,
+            }}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
