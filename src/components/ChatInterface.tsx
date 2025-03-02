@@ -9,6 +9,7 @@ import { Checkbox } from "./ui/checkbox";
 import { useToast } from "./ui/use-toast";
 import { supabase } from "@/lib/supabase";
 import DatePickerDialog from "./DatePickerDialog";
+import PublicPrivateDialog from "./PublicPrivateDialog";
 
 interface Message {
   id: string;
@@ -402,6 +403,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [isGeneratingItinerary, setIsGeneratingItinerary] = useState(false);
+  const [showPublicPrivateDialog, setShowPublicPrivateDialog] = useState(false);
+  const [pendingSaveData, setPendingSaveData] = useState<{
+    userId: string;
+    destination: string;
+    selections: Record<string, string[]>;
+    itinerary: any;
+  } | null>(null);
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -412,6 +420,31 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       timestamp: new Date(),
     },
   ]);
+
+  // Load selected destination and preferences from localStorage on initial render
+  useEffect(() => {
+    const storedDestination = localStorage.getItem("selectedDestination");
+    const storedSelections = localStorage.getItem("selectedPreferences");
+
+    if (storedDestination) {
+      try {
+        const parsedDestination = JSON.parse(storedDestination);
+        setSelectedDestination(parsedDestination);
+        setCurrentQuestionIndex(preferenceOptions.length); // Set to show results
+      } catch (error) {
+        console.error("Error parsing stored destination:", error);
+      }
+    }
+
+    if (storedSelections) {
+      try {
+        const parsedSelections = JSON.parse(storedSelections);
+        setSelections(parsedSelections);
+      } catch (error) {
+        console.error("Error parsing stored preferences:", error);
+      }
+    }
+  }, []);
 
   // useEffect to fetch destination details when a destination is selected
   useEffect(() => {
@@ -515,6 +548,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         const fetchedDestinations = await searchDestinations(selections);
         setDestinations(fetchedDestinations); // Store destinations in state
 
+        // If we were in edit mode, clear the previous itinerary now
+        if (selectedDestination?.itinerary) {
+          setSelectedDestination(null);
+          localStorage.removeItem("selectedDestination");
+          localStorage.removeItem("generatedItinerary");
+
+          // Dispatch event to clear the schedule view
+          const itineraryUpdatedEvent = new CustomEvent("itineraryUpdated", {
+            detail: { itinerary: null },
+          });
+          window.dispatchEvent(itineraryUpdatedEvent);
+        }
+
         setMessages((prev) => [
           ...prev,
           {
@@ -557,7 +603,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   return (
     <Card className="w-full h-full bg-white flex flex-col">
       {/* Header */}
-      <div className="p-4 border-b space-y-4">
+      <div className="p-4 border-b space-y-4 sticky top-0 bg-white z-10">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold flex items-center gap-2">
             <span>AI Travel Assistant</span>
@@ -565,46 +611,85 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               NEW
             </Badge>
           </h2>
-          <Button variant="ghost" size="icon">
-            <Edit2 className="h-4 w-4" />
-          </Button>
+          {selectedDestination?.itinerary && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                // Reset the chat but keep the current selections and destination
+                setCurrentQuestionIndex(0);
+                // Reset messages to initial state
+                setMessages([
+                  {
+                    id: "1",
+                    type: "bot",
+                    content:
+                      "Hi! Let's help you discover your perfect destination. I'll ask you a few questions about your preferences.",
+                    timestamp: new Date(),
+                  },
+                ]);
+              }}
+              title="Edit preferences"
+            >
+              <Edit2 className="h-4 w-4" />
+            </Button>
+          )}
         </div>
         {/* Current Trip Details */}
-        <div className="space-y-2">
+        <div className="space-y-2 bg-muted p-3 rounded-lg">
+          <h3 className="font-medium text-sm mb-2">Current Itinerary</h3>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <MapPin className="h-4 w-4" />
             <span className="font-medium text-foreground">
-              {showingResults
-                ? "Finding your perfect destinations"
-                : "Discovering your preferences..."}
+              {isGeneratingItinerary && selectedDestination
+                ? `Generating itinerary for ${selectedDestination.title}`
+                : selectedDestination?.itinerary
+                  ? `Itinerary for ${selectedDestination.title}`
+                  : showingResults
+                    ? "Finding your perfect destinations"
+                    : "Discovering your preferences..."}
             </span>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Calendar className="h-4 w-4" />
-            <span>Planning your dates...</span>
+            <span>
+              {showDatePickerDialog
+                ? "Selecting start date..."
+                : selectedDestination?.itinerary?.days?.[0]?.date
+                  ? `Starting ${selectedDestination.itinerary.days[0].date}`
+                  : "Planning your dates..."}
+            </span>
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Users className="h-4 w-4" />
-            <span>Customizing for you</span>
-          </div>
-        </div>
-        {/* Categories */}
-        <div className="flex gap-2 flex-wrap">
-          {[
-            "Preferences",
-            "Activities",
-            "Accommodation",
-            "Transport",
-            "Budget",
-          ].map((category) => (
-            <Badge
-              key={category}
-              variant="secondary"
-              className="cursor-pointer hover:bg-secondary/80"
-            >
-              {category}
-            </Badge>
-          ))}
+          {selectedDestination?.itinerary && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Users className="h-4 w-4" />
+              <span>
+                Duration: {selectedDestination.itinerary.days.length} days
+              </span>
+            </div>
+          )}
+
+          {/* Selected Preferences Summary */}
+          {Object.keys(selections).length > 0 && (
+            <div className="mt-2 pt-2 border-t border-border">
+              <h4 className="text-xs font-medium mb-1">
+                Selected Preferences:
+              </h4>
+              <div className="flex gap-2 flex-wrap">
+                {Object.entries(selections).flatMap(([category, values]) =>
+                  values.map((value) => (
+                    <Badge
+                      key={`${category}-${value}`}
+                      variant="secondary"
+                      className="text-xs"
+                    >
+                      {value}
+                    </Badge>
+                  )),
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -612,7 +697,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       <ScrollArea className="flex-1 p-4">
         {showingResults ? (
           <div className="space-y-6">
-            {/* Selected Preferences Summary */}
+            {/* Selected Preferences Summary 
             <div className="bg-muted rounded-lg p-4">
               <h3 className="font-medium mb-3">Your Travel Preferences</h3>
               <div className="space-y-2">
@@ -633,7 +718,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   </div>
                 ))}
               </div>
-            </div>
+            </div>*/}
 
             {/* Destination Results - Display Destinations or DestinationDetails conditionally */}
             <div className="space-y-4">
@@ -659,12 +744,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         key={index}
                         destination={destination}
                         onClick={() => setSelectedDestination(destination)}
-                        setShowDatePickerDialog={setShowDatePickerDialog}
+                        setShowDatePickerDialog={() => {
+                          setSelectedDestination(destination);
+                          setShowDatePickerDialog(true);
+                        }}
                         onGenerateItinerary={async (
                           startDate: Date = new Date(),
                         ) => {
                           try {
                             setIsGeneratingItinerary(true);
+                            // Store the selected destination before generating itinerary
+                            const currentDestination = destination;
+                            setSelectedDestination(currentDestination);
+                            console.log(
+                              "Current Destination: %s",
+                              currentDestination,
+                            );
                             const { generateItinerary } = await import(
                               "../lib/gemini"
                             );
@@ -674,7 +769,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               ? 7
                               : 3;
                             const itinerary = await generateItinerary(
-                              destination.title,
+                              currentDestination.title,
                               selections,
                               startDate,
                               duration,
@@ -742,29 +837,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               const { data } = await supabase.auth.getUser();
 
                               if (data.user) {
-                                // Ask user if they want to make the itinerary public
-                                const makePublic = window.confirm(
-                                  "Would you like to make this itinerary public so others can view it?",
-                                );
-
-                                const result = await saveItinerary(
-                                  data.user.id,
-                                  destination.title,
+                                // Set pending save data and show dialog
+                                setPendingSaveData({
+                                  userId: data.user.id,
+                                  destination: currentDestination.title,
                                   selections,
                                   itinerary,
-                                  makePublic,
-                                );
-
-                                if (result) {
-                                  console.log(
-                                    "Itinerary saved to database with ID:",
-                                    result.id,
-                                  );
-                                  toast({
-                                    title: "Itinerary Saved",
-                                    description: `Your itinerary has been saved ${makePublic ? "and is public" : "as private"}.`,
-                                  });
-                                }
+                                });
+                                setShowPublicPrivateDialog(true);
                               }
                             } catch (saveError) {
                               console.error(
@@ -775,18 +855,52 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
                             setDestinations((prev) =>
                               prev.map((d) =>
-                                d.title === destination.title
+                                d.title === currentDestination.title
                                   ? { ...d, itinerary }
                                   : d,
                               ),
                             );
-                            setSelectedDestination({
-                              ...destination,
+                            // Update the selected destination with the itinerary
+                            const updatedDestination = {
+                              ...currentDestination,
                               itinerary,
-                            });
+                            };
+                            setSelectedDestination(updatedDestination);
 
-                            // Refresh the page to update the schedule view
-                            window.location.reload();
+                            // Clear destinations array since we now have an itinerary
+                            setDestinations([]);
+
+                            // Store the selected destination and preferences in localStorage for persistence
+                            localStorage.setItem(
+                              "selectedDestination",
+                              JSON.stringify(updatedDestination),
+                            );
+
+                            // Also store the selections/preferences
+                            localStorage.setItem(
+                              "selectedPreferences",
+                              JSON.stringify(selections),
+                            );
+
+                            // Force a refresh of the schedule view by dispatching a custom event
+                            const itineraryUpdatedEvent = new CustomEvent(
+                              "itineraryUpdated",
+                              {
+                                detail: { itinerary },
+                              },
+                            );
+                            window.dispatchEvent(itineraryUpdatedEvent);
+
+                            // Small delay to ensure the event is processed
+                            setTimeout(() => {
+                              // Manually trigger a re-render by updating a URL parameter
+                              const url = new URL(window.location.href);
+                              url.searchParams.set(
+                                "itineraryUpdate",
+                                Date.now().toString(),
+                              );
+                              window.history.replaceState({}, "", url);
+                            }, 100);
                           } catch (error) {
                             console.error("Error generating itinerary:", error);
                           } finally {
@@ -800,13 +914,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               ) : (
                 // Display DestinationDetails when a destination is selected
                 <div>
-                  <Button
-                    variant="outline"
-                    className="mb-4"
-                    onClick={() => setSelectedDestination(null)}
-                  >
-                    ← Back to destinations
-                  </Button>
+                  {selectedDestination?.itinerary ? (
+                    // Don't show back button if itinerary is generated
+                    <div className="mb-4"></div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="mb-4"
+                      onClick={() => setSelectedDestination(null)}
+                    >
+                      ← Back to destinations
+                    </Button>
+                  )}
                   {isLoadingDetails ? (
                     <div className="flex items-center justify-center gap-2 py-8">
                       <Bot className="w-5 h-5 animate-spin" />
@@ -863,22 +982,77 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   }
                   onSelect={handleOptionSelect}
                 />
-                <Button
-                  onClick={handleNext}
-                  className="mt-4"
-                  disabled={
-                    isLoading ||
-                    !(
-                      selections[
-                        preferenceOptions[currentQuestionIndex].category
-                      ]?.length > 0
-                    )
-                  }
-                >
-                  {currentQuestionIndex === preferenceOptions.length - 1
-                    ? "Find Destinations"
-                    : "Next"}
-                </Button>
+                <div className="flex gap-2 mt-4">
+                  {currentQuestionIndex > 0 && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        // Go back to previous question
+                        const prevIndex = currentQuestionIndex - 1;
+                        setCurrentQuestionIndex(prevIndex);
+                        // Update messages to show previous question
+                        setMessages((prev) => [
+                          ...prev.slice(0, -2), // Remove last user response and current question
+                          {
+                            id: Date.now().toString(),
+                            type: "bot",
+                            content: preferenceOptions[prevIndex].question,
+                            timestamp: new Date(),
+                          },
+                        ]);
+                      }}
+                    >
+                      Back
+                    </Button>
+                  )}
+                  <Button
+                    onClick={handleNext}
+                    disabled={
+                      isLoading ||
+                      !(
+                        selections[
+                          preferenceOptions[currentQuestionIndex].category
+                        ]?.length > 0
+                      )
+                    }
+                  >
+                    {currentQuestionIndex === preferenceOptions.length - 1
+                      ? "Find Destinations"
+                      : "Next"}
+                  </Button>
+                  {selectedDestination?.itinerary && (
+                    <Button
+                      variant="outline"
+                      className="ml-auto"
+                      onClick={() => {
+                        // Cancel editing and restore previous state
+                        setCurrentQuestionIndex(preferenceOptions.length);
+                        // Reset messages to show destination details
+                        setMessages([
+                          {
+                            id: "1",
+                            type: "bot",
+                            content: (
+                              <div className="space-y-4">
+                                <div className="flex items-center justify-between mb-2">
+                                  <h3 className="font-medium">
+                                    Your Selected Destination
+                                  </h3>
+                                </div>
+                                <DestinationDetailsComponent
+                                  destination={selectedDestination}
+                                />
+                              </div>
+                            ),
+                            timestamp: new Date(),
+                          },
+                        ]);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -897,9 +1071,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onOpenChange={setShowDatePickerDialog}
         onDateSelect={(date) => {
           // Find the currently selected destination
-          const selectedDest =
-            destinations.find((d) => d === selectedDestination) ||
-            destinations[0];
+          // Make sure we're using the correct destination that was clicked on
+          const selectedDest = selectedDestination || destinations[0];
           if (selectedDest) {
             // Call the generate itinerary function with the selected date
             const generateFn = async () => {
@@ -974,29 +1147,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   const { data } = await supabase.auth.getUser();
 
                   if (data.user) {
-                    // Ask user if they want to make the itinerary public
-                    const makePublic = window.confirm(
-                      "Would you like to make this itinerary public so others can view it?",
-                    );
-
-                    const result = await saveItinerary(
-                      data.user.id,
-                      selectedDest.title,
+                    // Set pending save data and show dialog
+                    setPendingSaveData({
+                      userId: data.user.id,
+                      destination: selectedDest.title,
                       selections,
                       itinerary,
-                      makePublic,
-                    );
-
-                    if (result) {
-                      console.log(
-                        "Itinerary saved to database with ID:",
-                        result.id,
-                      );
-                      toast({
-                        title: "Itinerary Saved",
-                        description: `Your itinerary has been saved ${makePublic ? "and is public" : "as private"}.`,
-                      });
-                    }
+                    });
+                    setShowPublicPrivateDialog(true);
                   }
                 } catch (saveError) {
                   console.error(
@@ -1010,10 +1168,44 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     d.title === selectedDest.title ? { ...d, itinerary } : d,
                   ),
                 );
-                setSelectedDestination({ ...selectedDest, itinerary });
+                // Update the selected destination with the itinerary
+                const updatedDestination = { ...selectedDest, itinerary };
+                setSelectedDestination(updatedDestination);
 
-                // Refresh the page to update the schedule view
-                window.location.reload();
+                // Clear destinations array since we now have an itinerary
+                setDestinations([]);
+
+                // Store the selected destination and preferences in localStorage for persistence
+                localStorage.setItem(
+                  "selectedDestination",
+                  JSON.stringify(updatedDestination),
+                );
+
+                // Also store the selections/preferences
+                localStorage.setItem(
+                  "selectedPreferences",
+                  JSON.stringify(selections),
+                );
+
+                // Force a refresh of the schedule view by dispatching a custom event
+                const itineraryUpdatedEvent = new CustomEvent(
+                  "itineraryUpdated",
+                  {
+                    detail: { itinerary },
+                  },
+                );
+                window.dispatchEvent(itineraryUpdatedEvent);
+
+                // Small delay to ensure the event is processed
+                setTimeout(() => {
+                  // Manually trigger a re-render by updating a URL parameter
+                  const url = new URL(window.location.href);
+                  url.searchParams.set(
+                    "itineraryUpdate",
+                    Date.now().toString(),
+                  );
+                  window.history.replaceState({}, "", url);
+                }, 100);
               } catch (error) {
                 console.error("Error generating itinerary:", error);
                 toast({
@@ -1028,6 +1220,43 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             };
 
             generateFn();
+          }
+        }}
+      />
+
+      {/* Public/Private Dialog */}
+      <PublicPrivateDialog
+        open={showPublicPrivateDialog}
+        onOpenChange={setShowPublicPrivateDialog}
+        onConfirm={async (isPublic) => {
+          if (pendingSaveData) {
+            try {
+              const { saveItinerary } = await import("../lib/itineraryStorage");
+              const result = await saveItinerary(
+                pendingSaveData.userId,
+                pendingSaveData.destination,
+                pendingSaveData.selections,
+                pendingSaveData.itinerary,
+                isPublic,
+              );
+
+              if (result) {
+                console.log("Itinerary saved to database with ID:", result.id);
+                toast({
+                  title: "Itinerary Saved",
+                  description: `Your itinerary has been saved ${isPublic ? "and is public" : "as private"}.`,
+                });
+              }
+            } catch (error) {
+              console.error("Error saving itinerary:", error);
+              toast({
+                title: "Error",
+                description: "Failed to save itinerary. Please try again.",
+                variant: "destructive",
+              });
+            } finally {
+              setPendingSaveData(null);
+            }
           }
         }}
       />

@@ -71,6 +71,27 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   const [activeTab, setActiveTab] = React.useState("schedule");
 
   React.useEffect(() => {
+    // Listen for itinerary updates from ChatInterface
+    const handleItineraryUpdate = (event: CustomEvent) => {
+      console.log("Itinerary update event received:", event.detail);
+      loadItinerary();
+    };
+
+    window.addEventListener(
+      "itineraryUpdated",
+      handleItineraryUpdate as EventListener,
+    );
+
+    // Clean up event listener
+    return () => {
+      window.removeEventListener(
+        "itineraryUpdated",
+        handleItineraryUpdate as EventListener,
+      );
+    };
+  }, []);
+
+  React.useEffect(() => {
     const loadItinerary = async () => {
       try {
         const storedItinerary = localStorage.getItem("generatedItinerary");
@@ -130,7 +151,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
     };
 
     loadItinerary();
-  }, []);
+  }, [window.location.search]); // Re-run when URL search params change
 
   // Import the location service
   const [locationService, setLocationService] = React.useState<any>(null);
