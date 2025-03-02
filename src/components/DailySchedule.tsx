@@ -292,7 +292,10 @@ const DailySchedule = ({
             {sortedActivities.map((activity, index) => (
               <React.Fragment key={activity.id}>
                 {index > 0 && (
-                  <div className="flex justify-center">
+                  <div
+                    key={`add-button-${index}`}
+                    className="flex justify-center"
+                  >
                     <Button
                       variant="ghost"
                       size="sm"

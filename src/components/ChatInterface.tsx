@@ -682,6 +682,53 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               JSON.stringify(itinerary),
                             );
 
+                            // Store location data for each activity
+                            try {
+                              const { saveLocation } = await import(
+                                "../lib/locationService"
+                              );
+
+                              // Process each day's activities
+                              for (const day of itinerary.days) {
+                                for (const activity of day.activities) {
+                                  if (activity.lat && activity.long) {
+                                    // Save location data to database
+                                    const locationName =
+                                      activity.location || activity.title;
+                                    if (locationName) {
+                                      await saveLocation(
+                                        locationName,
+                                        parseFloat(activity.lat),
+                                        parseFloat(activity.long),
+                                      );
+
+                                      // If there's a city mentioned, save that too
+                                      const locationParts =
+                                        locationName.split(",");
+                                      if (locationParts.length > 1) {
+                                        const cityName =
+                                          locationParts[
+                                            locationParts.length - 1
+                                          ].trim();
+                                        if (cityName) {
+                                          await saveLocation(
+                                            cityName,
+                                            parseFloat(activity.lat),
+                                            parseFloat(activity.long),
+                                          );
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            } catch (error) {
+                              console.error(
+                                "Error saving location data:",
+                                error,
+                              );
+                            }
+
                             // Save to Supabase if user is logged in
                             try {
                               const { saveItinerary } = await import(

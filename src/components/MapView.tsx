@@ -125,22 +125,44 @@ const MapView: React.FC<MapViewProps> = ({
       if (locations.length > 0) {
         // Try to extract city name from the first location
         const firstLocation = locations[0];
-        console.log(firstLocation);
+        console.log("First location:", firstLocation);
         const locationParts = firstLocation.name.split(",");
         if (locationParts.length > 1) {
           cityName = locationParts[locationParts.length - 1].trim();
         }
 
-        // Set initial view to the first location
-        cityCenter = { lat: firstLocation.lat, lng: firstLocation.lng };
-        map.setView([cityCenter.lat, cityCenter.lng], currentZoom);
+        // Set initial view to the first location with valid coordinates
+        if (firstLocation.lat !== 0 && firstLocation.lng !== 0) {
+          cityCenter = { lat: firstLocation.lat, lng: firstLocation.lng };
+          map.setView([cityCenter.lat, cityCenter.lng], currentZoom);
+        } else {
+          // If first location has invalid coordinates, try to find a valid one
+          const validLocation = locations.find(
+            (loc) => loc.lat !== 0 && loc.lng !== 0,
+          );
+          if (validLocation) {
+            cityCenter = { lat: validLocation.lat, lng: validLocation.lng };
+            map.setView([cityCenter.lat, cityCenter.lng], currentZoom);
+          } else {
+            // If no valid locations, use the provided center
+            map.setView([center.lat, center.lng], currentZoom);
+          }
+        }
       }
 
       // Create a bounds object to fit all markers
       const bounds = L.latLngBounds();
 
-      // Add markers for each location
+      // Add markers for each location with valid coordinates
       locations.forEach((location) => {
+        // Skip locations with invalid coordinates
+        if (location.lat === 0 && location.lng === 0) {
+          console.warn(
+            `Skipping marker for ${location.name} due to invalid coordinates`,
+          );
+          return;
+        }
+
         const marker = L.marker([location.lat, location.lng], {
           title: location.name,
         }).addTo(map);

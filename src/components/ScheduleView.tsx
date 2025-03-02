@@ -71,83 +71,79 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   const [activeTab, setActiveTab] = React.useState("schedule");
 
   React.useEffect(() => {
-    try {
-      const storedItinerary = localStorage.getItem("generatedItinerary");
-      if (storedItinerary) {
-        const parsedItinerary = JSON.parse(storedItinerary);
-        console.log("Found stored itinerary:", parsedItinerary);
+    const loadItinerary = async () => {
+      try {
+        const storedItinerary = localStorage.getItem("generatedItinerary");
+        if (storedItinerary) {
+          const parsedItinerary = JSON.parse(storedItinerary);
+          console.log("Found stored itinerary:", parsedItinerary);
 
-        // Store all days from the itinerary
-        if (parsedItinerary.days && parsedItinerary.days.length > 0) {
-          setItineraryDays(parsedItinerary.days);
+          // Store all days from the itinerary
+          if (parsedItinerary.days && parsedItinerary.days.length > 0) {
+            setItineraryDays(parsedItinerary.days);
 
-          // Convert the first day's activities to the format expected by DailySchedule
-          const firstDay = parsedItinerary.days[0];
-          const convertedActivities = firstDay.activities.map(
-            (activity, index) => ({
-              id: index.toString(),
-              time: activity.time,
-              title: activity.title,
-              duration: activity.duration,
-              location: activity.location,
-              description: activity.description,
-              type: activity.type,
-              coordinates: {
-                lat: 35.6612 + index * 0.002,
-                lng: 139.704 + index * 0.005,
-              },
-            }),
-          );
-          setActivitiesList(convertedActivities);
+            // Import location service
+            const locationServiceModule = await import(
+              "../lib/locationService"
+            );
+
+            // Convert the first day's activities to the format expected by DailySchedule
+            const firstDay = parsedItinerary.days[0];
+            const convertedActivities = await Promise.all(
+              firstDay.activities.map(async (activity, index) => {
+                // Determine coordinates
+                let coordinates;
+                if (activity.lat && activity.long) {
+                  coordinates = {
+                    lat: parseFloat(activity.lat),
+                    lng: parseFloat(activity.long),
+                  };
+                } else {
+                  // Query the database for coordinates
+                  const locationText =
+                    activity.location || activity.title || "";
+                  coordinates =
+                    await locationServiceModule.getCoordinatesForLocation(
+                      locationText,
+                    );
+                }
+
+                return {
+                  id: index.toString(),
+                  time: activity.time,
+                  title: activity.title,
+                  duration: activity.duration,
+                  location: activity.location,
+                  description: activity.description,
+                  type: activity.type,
+                  coordinates: coordinates,
+                  city: activity.city || "",
+                };
+              }),
+            );
+            setActivitiesList(convertedActivities);
+          }
         }
+      } catch (error) {
+        console.error("Error loading itinerary from localStorage:", error);
       }
-    } catch (error) {
-      console.error("Error loading itinerary from localStorage:", error);
-    }
+    };
+
+    loadItinerary();
   }, []);
 
-  // Function to get coordinates based on location name
-  const getCoordinatesForLocation = (locationText: string) => {
-    const locationLower = locationText.toLowerCase();
+  // Import the location service
+  const [locationService, setLocationService] = React.useState<any>(null);
 
-    // City coordinates mapping
-    const cityCoordinates: Record<string, { lat: number; lng: number }> = {
-      tokyo: { lat: 35.6762, lng: 139.6503 },
-      kyoto: { lat: 35.0116, lng: 135.7681 },
-      osaka: { lat: 34.6937, lng: 135.5023 },
-      "new york": { lat: 40.7128, lng: -74.006 },
-      london: { lat: 51.5074, lng: -0.1278 },
-      paris: { lat: 48.8566, lng: 2.3522 },
-      rome: { lat: 41.9028, lng: 12.4964 },
-      sydney: { lat: -33.8688, lng: 151.2093 },
-      barcelona: { lat: 41.3851, lng: 2.1734 },
-      amsterdam: { lat: 52.3676, lng: 4.9041 },
-      berlin: { lat: 52.52, lng: 13.405 },
-      venice: { lat: 45.4408, lng: 12.3155 },
-      florence: { lat: 43.7696, lng: 11.2558 },
-      milan: { lat: 45.4642, lng: 9.19 },
-    };
-
-    // Check if any city name is in the location text
-    for (const [city, coords] of Object.entries(cityCoordinates)) {
-      if (locationLower.includes(city)) {
-        // Add a small random offset to prevent markers from stacking exactly
-        return {
-          lat: coords.lat + (Math.random() - 0.5) * 0.01,
-          lng: coords.lng + (Math.random() - 0.5) * 0.01,
-        };
-      }
-    }
-
-    // Default to Tokyo with random offset if no match
-    return {
-      lat: 35.6762 + (Math.random() - 0.5) * 0.02,
-      lng: 139.6503 + (Math.random() - 0.5) * 0.02,
-    };
-  };
+  React.useEffect(() => {
+    // Dynamically import the location service
+    import("../lib/locationService").then((module) => {
+      setLocationService(module);
+    });
+  }, []);
 
   // Function to change the selected day
-  const handleDayChange = (dayIndex: number) => {
+  const handleDayChange = async (dayIndex: number) => {
     if (itineraryDays.length > dayIndex) {
       setSelectedDay(dayIndex);
       const dayData = itineraryDays[dayIndex];
@@ -169,25 +165,47 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
         }
       }
 
-      const convertedActivities = dayData.activities.map((activity, index) => {
-        // Get coordinates based on the activity location or title
-        const locationText = activity.location || activity.title || "";
-        const coordinates = getCoordinatesForLocation(locationText);
+      const convertedActivities = await Promise.all(
+        dayData.activities.map(async (activity, index) => {
+          // Use coordinates from the activity if available
+          let coordinates;
 
-        return {
-          id: index.toString(),
-          time: activity.time,
-          title: activity.title,
-          duration: activity.duration,
-          location: activity.location,
-          description: activity.description,
-          type: activity.type,
-          coordinates: {
-            lat: activity.coordinates?.lat || coordinates.lat,
-            lng: activity.coordinates?.lng || coordinates.lng,
-          },
-        };
-      });
+          if (activity.lat && activity.long) {
+            // Use coordinates directly from the API response
+            coordinates = {
+              lat: parseFloat(activity.lat),
+              lng: parseFloat(activity.long),
+            };
+          } else if (activity.coordinates?.lat && activity.coordinates?.lng) {
+            // Use coordinates from the coordinates object if available
+            coordinates = {
+              lat: activity.coordinates.lat,
+              lng: activity.coordinates.lng,
+            };
+          } else {
+            // Query the database for coordinates based on location text
+            const locationText = activity.location || activity.title || "";
+            coordinates = locationService
+              ? await locationService.getCoordinatesForLocation(locationText)
+              : {
+                  lat: 35.6762 + (Math.random() - 0.5) * 0.02,
+                  lng: 139.6503 + (Math.random() - 0.5) * 0.02,
+                };
+          }
+
+          return {
+            id: index.toString(),
+            time: activity.time,
+            title: activity.title,
+            duration: activity.duration,
+            location: activity.location,
+            description: activity.description,
+            type: activity.type,
+            coordinates: coordinates,
+            city: activity.city || dayCity,
+          };
+        }),
+      );
 
       setActivitiesList(convertedActivities);
     }
@@ -223,8 +241,8 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
     return {
       id: activity.id,
       name: activity.title,
-      lat: activity.coordinates.lat,
-      lng: activity.coordinates.lng,
+      lat: activity.coordinates?.lat || 0,
+      lng: activity.coordinates?.lng || 0,
       type,
     };
   });
