@@ -135,6 +135,32 @@ interface CityInfo {
   daysToSpend: number;
 }
 
+// Function to get coordinates from Google Maps API
+async function getCoordinatesFromGoogleMaps(
+  location: string,
+): Promise<{ lat: number; lng: number }> {
+  try {
+    const encodedLocation = encodeURIComponent(location);
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedLocation}&key=${import.meta.env.VITE_MAPS_API_KEY}`,
+    );
+
+    const data = await response.json();
+
+    if (data.status === "OK" && data.results && data.results.length > 0) {
+      const { lat, lng } = data.results[0].geometry.location;
+      return { lat, lng };
+    } else {
+      console.error("Geocoding API error:", data.status);
+      // Return default coordinates if geocoding fails
+      return { lat: 0, lng: 0 };
+    }
+  } catch (error) {
+    console.error("Error fetching coordinates:", error);
+    return { lat: 0, lng: 0 };
+  }
+}
+
 export async function generateItinerary(
   destination: string,
   preferences: Record<string, string[]>,
@@ -239,9 +265,40 @@ export async function generateItinerary(
         const startIndex = cleanText.indexOf("{");
         const endIndex = cleanText.lastIndexOf("}") + 1;
         cleanText = cleanText.substring(startIndex, endIndex);
-        console.log("cleanText:", cleanText); // ADD THIS LINE
+        console.log("cleanText:", cleanText);
 
         const cityItinerary = JSON.parse(cleanText);
+
+        // Add coordinates to each activity using Google Maps API
+        for (const day of cityItinerary.days) {
+          for (const activity of day.activities) {
+            // Only get coordinates if they don't already exist
+            if (!activity.lat || !activity.long) {
+              // Use the location or title to get coordinates
+              const locationQuery = `${activity.location || activity.title}, ${city.name}, ${destination}`;
+              console.log(`Getting coordinates for: ${locationQuery}`);
+
+              try {
+                const coordinates =
+                  await getCoordinatesFromGoogleMaps(locationQuery);
+                activity.lat = coordinates.lat;
+                activity.long = coordinates.lng;
+                console.log(
+                  `Got coordinates for ${locationQuery}:`,
+                  coordinates,
+                );
+
+                // Add a small delay to avoid rate limiting
+                await new Promise((resolve) => setTimeout(resolve, 200));
+              } catch (coordError) {
+                console.error(
+                  `Failed to get coordinates for ${locationQuery}:`,
+                  coordError,
+                );
+              }
+            }
+          }
+        }
 
         // Add city days to overall itinerary
         allDays = [...allDays, ...cityItinerary.days];

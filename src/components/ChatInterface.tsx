@@ -6,6 +6,8 @@ import { Bot, Calendar, Edit2, MapPin, Users, Heart } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Checkbox } from "./ui/checkbox";
+import { useToast } from "./ui/use-toast";
+import { supabase } from "@/lib/supabase";
 
 interface Message {
   id: string;
@@ -396,6 +398,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [isGeneratingItinerary, setIsGeneratingItinerary] = useState(false);
+  const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -672,11 +675,51 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               duration,
                             );
                             console.log("Generated itinerary:", itinerary);
+
                             // Store the itinerary in localStorage
                             localStorage.setItem(
                               "generatedItinerary",
                               JSON.stringify(itinerary),
                             );
+
+                            // Save to Supabase if user is logged in
+                            try {
+                              const { saveItinerary } = await import(
+                                "../lib/itineraryStorage"
+                              );
+                              const { data } = await supabase.auth.getUser();
+
+                              if (data.user) {
+                                // Ask user if they want to make the itinerary public
+                                const makePublic = window.confirm(
+                                  "Would you like to make this itinerary public so others can view it?",
+                                );
+
+                                const result = await saveItinerary(
+                                  data.user.id,
+                                  destination.title,
+                                  selections,
+                                  itinerary,
+                                  makePublic,
+                                );
+
+                                if (result) {
+                                  console.log(
+                                    "Itinerary saved to database with ID:",
+                                    result.id,
+                                  );
+                                  toast({
+                                    title: "Itinerary Saved",
+                                    description: `Your itinerary has been saved ${makePublic ? "and is public" : "as private"}.`,
+                                  });
+                                }
+                              }
+                            } catch (saveError) {
+                              console.error(
+                                "Error saving itinerary to database:",
+                                saveError,
+                              );
+                            }
 
                             setDestinations((prev) =>
                               prev.map((d) =>
