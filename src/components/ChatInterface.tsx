@@ -8,6 +8,7 @@ import { Badge } from "./ui/badge";
 import { Checkbox } from "./ui/checkbox";
 import { useToast } from "./ui/use-toast";
 import { supabase } from "@/lib/supabase";
+import DatePickerDialog from "./DatePickerDialog";
 
 interface Message {
   id: string;
@@ -186,10 +187,12 @@ const DestinationCardComponent = ({
   destination,
   onClick,
   onGenerateItinerary,
+  setShowDatePickerDialog,
 }: {
   destination: Destination;
   onClick?: () => void;
   onGenerateItinerary?: () => void;
+  setShowDatePickerDialog: (show: boolean) => void;
 }) => (
   <div
     className="bg-white rounded-lg shadow-md overflow-hidden mb-4 cursor-pointer transition-all hover:shadow-lg"
@@ -240,7 +243,7 @@ const DestinationCardComponent = ({
           size="sm"
           onClick={(e) => {
             e.stopPropagation();
-            onGenerateItinerary?.();
+            setShowDatePickerDialog(true);
           }}
         >
           Generate Itinerary
@@ -389,6 +392,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onSendMessage = () => {},
   isLoading = false,
 }: ChatInterfaceProps) => {
+  const [showDatePickerDialog, setShowDatePickerDialog] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [destinations, setDestinations] = useState<Destination[]>([]); // State to hold destinations
@@ -657,7 +661,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         key={index}
                         destination={destination}
                         onClick={() => setSelectedDestination(destination)}
-                        onGenerateItinerary={async () => {
+                        setShowDatePickerDialog={setShowDatePickerDialog}
+                        onGenerateItinerary={async (
+                          startDate: Date = new Date(),
+                        ) => {
                           try {
                             setIsGeneratingItinerary(true);
                             const { generateItinerary } = await import(
@@ -671,7 +678,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                             const itinerary = await generateItinerary(
                               destination.title,
                               selections,
-                              new Date(),
+                              startDate,
                               duration,
                             );
                             console.log("Generated itinerary:", itinerary);
@@ -885,6 +892,147 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         )}
       </ScrollArea>
+
+      {/* Date Picker Dialog */}
+      <DatePickerDialog
+        open={showDatePickerDialog}
+        onOpenChange={setShowDatePickerDialog}
+        onDateSelect={(date) => {
+          // Find the currently selected destination
+          const selectedDest =
+            destinations.find((d) => d === selectedDestination) ||
+            destinations[0];
+          if (selectedDest) {
+            // Call the generate itinerary function with the selected date
+            const generateFn = async () => {
+              try {
+                setIsGeneratingItinerary(true);
+                const { generateItinerary } = await import("../lib/gemini");
+                const duration = selections.duration?.[0]
+                  ?.toLowerCase()
+                  .includes("week")
+                  ? 7
+                  : 3;
+                const itinerary = await generateItinerary(
+                  selectedDest.title,
+                  selections,
+                  date,
+                  duration,
+                );
+                console.log("Generated itinerary:", itinerary);
+
+                // Store the itinerary in localStorage
+                localStorage.setItem(
+                  "generatedItinerary",
+                  JSON.stringify(itinerary),
+                );
+
+                // Store location data for each activity
+                try {
+                  const { saveLocation } = await import(
+                    "../lib/locationService"
+                  );
+
+                  // Process each day's activities
+                  for (const day of itinerary.days) {
+                    for (const activity of day.activities) {
+                      if (activity.lat && activity.long) {
+                        // Save location data to database
+                        const locationName =
+                          activity.location || activity.title;
+                        if (locationName) {
+                          await saveLocation(
+                            locationName,
+                            parseFloat(activity.lat),
+                            parseFloat(activity.long),
+                          );
+
+                          // If there's a city mentioned, save that too
+                          const locationParts = locationName.split(",");
+                          if (locationParts.length > 1) {
+                            const cityName =
+                              locationParts[locationParts.length - 1].trim();
+                            if (cityName) {
+                              await saveLocation(
+                                cityName,
+                                parseFloat(activity.lat),
+                                parseFloat(activity.long),
+                              );
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                } catch (error) {
+                  console.error("Error saving location data:", error);
+                }
+
+                // Save to Supabase if user is logged in
+                try {
+                  const { saveItinerary } = await import(
+                    "../lib/itineraryStorage"
+                  );
+                  const { data } = await supabase.auth.getUser();
+
+                  if (data.user) {
+                    // Ask user if they want to make the itinerary public
+                    const makePublic = window.confirm(
+                      "Would you like to make this itinerary public so others can view it?",
+                    );
+
+                    const result = await saveItinerary(
+                      data.user.id,
+                      selectedDest.title,
+                      selections,
+                      itinerary,
+                      makePublic,
+                    );
+
+                    if (result) {
+                      console.log(
+                        "Itinerary saved to database with ID:",
+                        result.id,
+                      );
+                      toast({
+                        title: "Itinerary Saved",
+                        description: `Your itinerary has been saved ${makePublic ? "and is public" : "as private"}.`,
+                      });
+                    }
+                  }
+                } catch (saveError) {
+                  console.error(
+                    "Error saving itinerary to database:",
+                    saveError,
+                  );
+                }
+
+                setDestinations((prev) =>
+                  prev.map((d) =>
+                    d.title === selectedDest.title ? { ...d, itinerary } : d,
+                  ),
+                );
+                setSelectedDestination({ ...selectedDest, itinerary });
+
+                // Refresh the page to update the schedule view
+                window.location.reload();
+              } catch (error) {
+                console.error("Error generating itinerary:", error);
+                toast({
+                  title: "Error",
+                  description:
+                    "Failed to generate itinerary. Please try again.",
+                  variant: "destructive",
+                });
+              } finally {
+                setIsGeneratingItinerary(false);
+              }
+            };
+
+            generateFn();
+          }
+        }}
+      />
     </Card>
   );
 };
