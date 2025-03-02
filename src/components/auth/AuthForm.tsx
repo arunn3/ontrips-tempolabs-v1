@@ -31,6 +31,7 @@ const AuthForm: React.FC<AuthFormProps> = ({ onSuccess = () => {} }) => {
           data: {
             name,
           },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
@@ -38,7 +39,9 @@ const AuthForm: React.FC<AuthFormProps> = ({ onSuccess = () => {} }) => {
 
       toast({
         title: "Success!",
-        description: "Check your email for the confirmation link.",
+        description: data.user
+          ? "Account created successfully! You can now sign in."
+          : "Check your email for the confirmation link.",
       });
 
       onSuccess();
