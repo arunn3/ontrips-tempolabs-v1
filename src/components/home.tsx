@@ -3,7 +3,9 @@ import ChatInterface from "./ChatInterface";
 import ScheduleView from "./ScheduleView";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
-import { Calendar, Menu } from "lucide-react";
+import { Calendar, Menu, User } from "lucide-react";
+import AuthModal from "./auth/AuthModal";
+import { useAuth } from "@/context/AuthContext";
 
 interface HomeProps {
   onMenuClick?: () => void;
@@ -11,6 +13,7 @@ interface HomeProps {
 
 const Home = ({ onMenuClick = () => {} }: HomeProps) => {
   const [showChat, setShowChat] = React.useState(true);
+  const { user } = useAuth();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -35,6 +38,14 @@ const Home = ({ onMenuClick = () => {} }: HomeProps) => {
               <Calendar className="w-4 h-4 mr-2" />
               View Calendar
             </Button>
+            <AuthModal
+              trigger={
+                <Button variant="outline" size="sm">
+                  <User className="w-4 h-4 mr-2" />
+                  {user ? "Profile" : "Sign In"}
+                </Button>
+              }
+            />
           </div>
         </div>
       </header>

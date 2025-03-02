@@ -1,6 +1,21 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+// Create a mock supabase client for development without actual credentials
+const mockSupabase = {
+  auth: {
+    getSession: async () => ({ data: { session: null } }),
+    getUser: async () => ({ data: { user: null } }),
+    signUp: async () => ({ data: {}, error: null }),
+    signInWithPassword: async () => ({ data: {}, error: null }),
+    signOut: async () => ({ error: null }),
+    onAuthStateChange: () => ({
+      data: {
+        subscription: {
+          unsubscribe: () => {},
+        },
+      },
+    }),
+  },
+};
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = mockSupabase as any;
