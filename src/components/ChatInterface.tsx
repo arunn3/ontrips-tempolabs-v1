@@ -569,7 +569,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <Edit2 className="h-4 w-4" />
           </Button>
         </div>
-
         {/* Current Trip Details */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -589,7 +588,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <span>Customizing for you</span>
           </div>
         </div>
-
         {/* Categories */}
         <div className="flex gap-2 flex-wrap">
           {[
@@ -841,7 +839,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             {/* Only show current question */}
             <div className="flex items-start gap-3">
               <Avatar className="h-8 w-8">
-                <AvatarImage src="https://api.dicebear.com/7.x/bottts/svg?seed=travel-bot" />
+                <AvatarImage src="https://api.dicebear.com/9.x/thumbs/svg?seed=Jack&scale=70&translateX=5" />
                 <AvatarFallback>
                   <Bot />
                 </AvatarFallback>
