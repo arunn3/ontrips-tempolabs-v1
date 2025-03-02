@@ -294,20 +294,14 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
       <Tabs
         value={activeTab}
         onValueChange={setActiveTab}
-        className="w-full flex-1 flex flex-row overflow-hidden"
+        className="w-full flex-1 flex flex-col overflow-hidden"
       >
-        <TabsList className="flex-shrink-0 flex-col h-auto mr-4 p-1">
-          <TabsTrigger
-            value="schedule"
-            className="flex items-center gap-2 justify-start w-full mb-1"
-          >
+        <TabsList className="flex-shrink-0 mb-4 p-1 self-start">
+          <TabsTrigger value="schedule" className="flex items-center gap-2">
             <List className="h-4 w-4" />
             Schedule
           </TabsTrigger>
-          <TabsTrigger
-            value="map"
-            className="flex items-center gap-2 justify-start w-full"
-          >
+          <TabsTrigger value="map" className="flex items-center gap-2">
             <Map className="h-4 w-4" />
             Map
           </TabsTrigger>
@@ -337,6 +331,10 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
               lat: locations[0]?.lat || 35.6612,
               lng: locations[0]?.lng || 139.704,
             }}
+            mapProvider="openstreetmap"
+            onProviderChange={(provider) =>
+              console.log(`Map provider changed to ${provider}`)
+            }
           />
         </TabsContent>
       </Tabs>

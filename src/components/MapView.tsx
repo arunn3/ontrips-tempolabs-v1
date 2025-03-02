@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { MapPin, ZoomIn, ZoomOut, Navigation } from "lucide-react";
@@ -8,6 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./ui/tooltip";
+import MapProviderToggle, { MapProvider } from "./MapProviderToggle";
 
 interface Location {
   id: string;
@@ -23,6 +24,8 @@ interface MapViewProps {
   onLocationSelect?: (locationId: string) => void;
   center?: { lat: number; lng: number };
   zoom?: number;
+  mapProvider?: MapProvider;
+  onProviderChange?: (provider: MapProvider) => void;
 }
 
 const defaultLocations: Location[] = [
@@ -49,35 +52,24 @@ const MapView: React.FC<MapViewProps> = ({
   onLocationSelect = () => {},
   center = { lat: 48.8584, lng: 2.2945 },
   zoom = 13,
+  mapProvider = "openstreetmap",
+  onProviderChange = () => {},
 }) => {
+  const [currentProvider, setCurrentProvider] =
+    useState<MapProvider>(mapProvider);
   const [currentZoom, setCurrentZoom] = useState(zoom);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
-  useEffect(() => {
-    // Load OpenStreetMap script
-    const loadLeaflet = async () => {
+  const initializeOpenStreetMap = useCallback(() => {
+    if (!mapRef.current) return;
+
+    try {
       if (!window.L) {
-        // Load Leaflet CSS
-        const linkEl = document.createElement("link");
-        linkEl.rel = "stylesheet";
-        linkEl.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        document.head.appendChild(linkEl);
-
-        // Load Leaflet JS
-        const script = document.createElement("script");
-        script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-        script.async = true;
-        script.onload = initializeMap;
-        document.body.appendChild(script);
-      } else {
-        initializeMap();
+        console.error("Leaflet library not loaded");
+        return;
       }
-    };
-
-    const initializeMap = () => {
-      if (!mapRef.current || mapInstanceRef.current) return;
 
       const L = window.L;
 
@@ -93,61 +85,227 @@ const MapView: React.FC<MapViewProps> = ({
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }).addTo(map);
-    };
+    } catch (error) {
+      console.error("Error initializing OpenStreetMap:", error);
+      if (mapRef.current) {
+        mapRef.current.innerHTML =
+          '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#f0f0f0;border-radius:0.5rem;"><p>Error loading map</p></div>';
+      }
+    }
+  }, [center.lat, center.lng, currentZoom]);
 
-    loadLeaflet();
+  useEffect(() => {
+    // Clean up existing map instance if it exists
+    if (mapInstanceRef.current) {
+      if (currentProvider === "openstreetmap" && window.L) {
+        try {
+          if (typeof mapInstanceRef.current.remove === "function") {
+            mapInstanceRef.current.remove();
+          } else if (
+            typeof mapInstanceRef.current._leaflet_id !== "undefined"
+          ) {
+            // Alternative cleanup for Leaflet maps
+            mapInstanceRef.current.off();
+            mapInstanceRef.current.remove();
+          }
+        } catch (error) {
+          console.error("Error removing map:", error);
+        }
+      }
+      mapInstanceRef.current = null;
+    }
+
+    if (currentProvider === "openstreetmap") {
+      // Load OpenStreetMap script
+      try {
+        // Create a simple placeholder first
+        if (mapRef.current) {
+          mapRef.current.innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#f0f0f0;border-radius:0.5rem;"><p>Loading map...</p></div>';
+        }
+
+        // Check if Leaflet is already loaded
+        if (window.L) {
+          initializeOpenStreetMap();
+          return;
+        }
+
+        // Load Leaflet CSS
+        const existingLink = document.querySelector('link[href*="leaflet"]');
+        if (!existingLink) {
+          const linkEl = document.createElement("link");
+          linkEl.rel = "stylesheet";
+          linkEl.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+          document.head.appendChild(linkEl);
+        }
+
+        // Load Leaflet JS
+        const existingScript = document.querySelector('script[src*="leaflet"]');
+        if (!existingScript) {
+          const script = document.createElement("script");
+          script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+          script.async = true;
+          script.onload = initializeOpenStreetMap;
+          script.onerror = () => {
+            console.error("Failed to load Leaflet script");
+            if (mapRef.current) {
+              mapRef.current.innerHTML =
+                '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#f0f0f0;border-radius:0.5rem;"><p>Failed to load map</p></div>';
+            }
+          };
+          document.body.appendChild(script);
+        }
+      } catch (error) {
+        console.error("Error setting up OpenStreetMap:", error);
+        if (mapRef.current) {
+          mapRef.current.innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#f0f0f0;border-radius:0.5rem;"><p>Error loading map</p></div>';
+        }
+      }
+    } else if (currentProvider === "google") {
+      const loadGoogleMaps = () => {
+        // Create a loading placeholder
+        if (mapRef.current) {
+          mapRef.current.innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#f0f0f0;border-radius:0.5rem;"><p>Loading Google Maps...</p></div>';
+        }
+
+        // Check if Google Maps API is already loaded
+        if (window.google?.maps) {
+          initializeGoogleMap();
+          return;
+        }
+
+        // Load Google Maps API
+        const apiKey = import.meta.env.VITE_MAPS_API_KEY;
+        if (!apiKey) {
+          console.error("Google Maps API key is missing");
+          if (mapRef.current) {
+            mapRef.current.innerHTML =
+              '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#f0f0f0;border-radius:0.5rem;"><p>Google Maps API key is missing</p></div>';
+          }
+          return;
+        }
+
+        const existingScript = document.querySelector(
+          'script[src*="maps.googleapis.com"]',
+        );
+        if (!existingScript) {
+          const script = document.createElement("script");
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+          script.async = true;
+          script.defer = true;
+          script.onload = initializeGoogleMap;
+          script.onerror = () => {
+            console.error("Failed to load Google Maps script");
+            if (mapRef.current) {
+              mapRef.current.innerHTML =
+                '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#f0f0f0;border-radius:0.5rem;"><p>Failed to load Google Maps</p></div>';
+            }
+          };
+          document.body.appendChild(script);
+        }
+      };
+
+      const initializeGoogleMap = () => {
+        try {
+          if (!mapRef.current || !window.google?.maps) return;
+
+          const map = new window.google.maps.Map(mapRef.current, {
+            center: { lat: center.lat, lng: center.lng },
+            zoom: currentZoom,
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: false,
+          });
+
+          mapInstanceRef.current = map;
+        } catch (error) {
+          console.error("Error initializing Google Maps:", error);
+          if (mapRef.current) {
+            mapRef.current.innerHTML =
+              '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#f0f0f0;border-radius:0.5rem;"><p>Error initializing Google Maps</p></div>';
+          }
+        }
+      };
+
+      loadGoogleMaps();
+    }
 
     return () => {
-      // Cleanup map instance when component unmounts
+      // Cleanup map instance when component unmounts or provider changes
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
+        if (currentProvider === "openstreetmap" && window.L) {
+          try {
+            if (typeof mapInstanceRef.current.remove === "function") {
+              mapInstanceRef.current.remove();
+            } else if (
+              typeof mapInstanceRef.current._leaflet_id !== "undefined"
+            ) {
+              // Alternative cleanup for Leaflet maps
+              mapInstanceRef.current.off();
+              mapInstanceRef.current.remove();
+            }
+          } catch (error) {
+            console.error("Error cleaning up map:", error);
+          }
+        }
         mapInstanceRef.current = null;
       }
     };
-  }, []);
+  }, [currentProvider, initializeOpenStreetMap]);
 
   // Update markers when locations or selected location changes
   useEffect(() => {
-    if (mapInstanceRef.current && window.L) {
+    if (!mapInstanceRef.current) return;
+
+    // Clear existing markers
+    markersRef.current.forEach((marker) => {
+      try {
+        if (currentProvider === "openstreetmap" && window.L) {
+          if (marker && typeof marker.remove === "function") {
+            marker.remove();
+          }
+        } else if (currentProvider === "google" && window.google?.maps) {
+          marker.setMap(null);
+        }
+      } catch (error) {
+        console.error("Error removing marker:", error);
+      }
+    });
+    markersRef.current = [];
+
+    // Find the city from the first location to center the map
+    let cityCenter = { lat: center.lat, lng: center.lng };
+    let cityName = "";
+
+    if (locations.length > 0) {
+      // Try to extract city name from the first location
+      const firstLocation = locations[0];
+      console.log("First location:", firstLocation);
+      const locationParts = firstLocation.name.split(",");
+      if (locationParts.length > 1) {
+        cityName = locationParts[locationParts.length - 1].trim();
+      }
+
+      // Find a valid location to center the map
+      const validLocation =
+        locations.find((loc) => loc.lat !== 0 && loc.lng !== 0) ||
+        firstLocation;
+      if (validLocation.lat !== 0 && validLocation.lng !== 0) {
+        cityCenter = { lat: validLocation.lat, lng: validLocation.lng };
+      }
+    }
+
+    if (currentProvider === "openstreetmap" && window.L) {
       const map = mapInstanceRef.current;
-
-      // Clear existing markers
-      markersRef.current.forEach((marker) => marker.remove());
-      markersRef.current = [];
-
-      // Add new markers
       const L = window.L;
 
-      // Find the city from the first location to center the map
-      let cityCenter = { lat: center.lat, lng: center.lng };
-      let cityName = "";
-
-      if (locations.length > 0) {
-        // Try to extract city name from the first location
-        const firstLocation = locations[0];
-        console.log("First location:", firstLocation);
-        const locationParts = firstLocation.name.split(",");
-        if (locationParts.length > 1) {
-          cityName = locationParts[locationParts.length - 1].trim();
-        }
-
-        // Set initial view to the first location with valid coordinates
-        if (firstLocation.lat !== 0 && firstLocation.lng !== 0) {
-          cityCenter = { lat: firstLocation.lat, lng: firstLocation.lng };
-          map.setView([cityCenter.lat, cityCenter.lng], currentZoom);
-        } else {
-          // If first location has invalid coordinates, try to find a valid one
-          const validLocation = locations.find(
-            (loc) => loc.lat !== 0 && loc.lng !== 0,
-          );
-          if (validLocation) {
-            cityCenter = { lat: validLocation.lat, lng: validLocation.lng };
-            map.setView([cityCenter.lat, cityCenter.lng], currentZoom);
-          } else {
-            // If no valid locations, use the provided center
-            map.setView([center.lat, center.lng], currentZoom);
-          }
-        }
+      // Set view to the city center
+      try {
+        map.setView([cityCenter.lat, cityCenter.lng], currentZoom);
+      } catch (error) {
+        console.error("Error setting map view:", error);
       }
 
       // Create a bounds object to fit all markers
@@ -163,9 +321,15 @@ const MapView: React.FC<MapViewProps> = ({
           return;
         }
 
-        const marker = L.marker([location.lat, location.lng], {
-          title: location.name,
-        }).addTo(map);
+        let marker;
+        try {
+          marker = L.marker([location.lat, location.lng], {
+            title: location.name,
+          }).addTo(map);
+        } catch (error) {
+          console.error(`Error adding marker for ${location.name}:`, error);
+          return;
+        }
 
         marker.bindPopup(`<b>${location.name}</b><br>${location.type}`);
 
@@ -194,19 +358,137 @@ const MapView: React.FC<MapViewProps> = ({
           console.error("Error fitting bounds:", error);
           // Fallback to just centering on the first location
           if (locations.length > 0) {
-            map.setView([locations[0].lat, locations[0].lng], currentZoom);
+            map.setView([cityCenter.lat, cityCenter.lng], currentZoom);
+          }
+        }
+      }
+    } else if (currentProvider === "google" && window.google?.maps) {
+      const map = mapInstanceRef.current;
+      if (!map) return;
+
+      // Set center to the city center
+      try {
+        map.setCenter({ lat: cityCenter.lat, lng: cityCenter.lng });
+        map.setZoom(currentZoom);
+      } catch (error) {
+        console.error("Error setting Google Maps center:", error);
+      }
+
+      // Add markers for each location with valid coordinates
+      const bounds = new window.google.maps.LatLngBounds();
+      const infoWindow = new window.google.maps.InfoWindow();
+
+      locations.forEach((location) => {
+        // Skip locations with invalid coordinates
+        if (location.lat === 0 && location.lng === 0) {
+          console.warn(
+            `Skipping marker for ${location.name} due to invalid coordinates`,
+          );
+          return;
+        }
+
+        try {
+          // Determine marker icon based on location type
+          let icon = null;
+          switch (location.type) {
+            case "attraction":
+              icon = {
+                url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+              };
+              break;
+            case "restaurant":
+              icon = {
+                url: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
+              };
+              break;
+            case "hotel":
+              icon = {
+                url: "https://maps.google.com/mapfiles/ms/icons/orange-dot.png",
+              };
+              break;
+            default:
+              icon = {
+                url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+              };
+          }
+
+          const marker = new window.google.maps.Marker({
+            position: { lat: location.lat, lng: location.lng },
+            map: map,
+            title: location.name,
+            icon: icon,
+          });
+
+          // Add click handler
+          marker.addListener("click", () => {
+            infoWindow.setContent(
+              `<b>${location.name}</b><br>${location.type}`,
+            );
+            infoWindow.open(map, marker);
+            onLocationSelect(location.id);
+          });
+
+          // Highlight selected marker
+          if (location.id === selectedLocation) {
+            infoWindow.setContent(
+              `<b>${location.name}</b><br>${location.type}`,
+            );
+            infoWindow.open(map, marker);
+            map.setCenter({ lat: location.lat, lng: location.lng });
+          }
+
+          // Add location to bounds
+          bounds.extend({ lat: location.lat, lng: location.lng });
+          markersRef.current.push(marker);
+        } catch (error) {
+          console.error(
+            `Error adding Google marker for ${location.name}:`,
+            error,
+          );
+        }
+      });
+
+      // If we have multiple locations, fit the map to show all markers
+      if (locations.length > 1 && !bounds.isEmpty()) {
+        try {
+          map.fitBounds(bounds);
+          // Add some padding
+          const listener = window.google.maps.event.addListenerOnce(
+            map,
+            "bounds_changed",
+            () => {
+              map.setZoom(Math.min(map.getZoom(), currentZoom));
+            },
+          );
+        } catch (error) {
+          console.error("Error fitting Google Maps bounds:", error);
+          // Fallback to just centering on the first location
+          if (locations.length > 0) {
+            map.setCenter({ lat: cityCenter.lat, lng: cityCenter.lng });
           }
         }
       }
     }
-  }, [locations, selectedLocation]);
+  }, [locations, selectedLocation, currentProvider]);
 
   // Update zoom when it changes
   useEffect(() => {
-    if (mapInstanceRef.current) {
+    if (!mapInstanceRef.current) return;
+
+    if (currentProvider === "openstreetmap" && window.L) {
       mapInstanceRef.current.setZoom(currentZoom);
+    } else if (
+      currentProvider === "google" &&
+      window.google?.maps &&
+      mapInstanceRef.current
+    ) {
+      try {
+        mapInstanceRef.current.setZoom(currentZoom);
+      } catch (error) {
+        console.error("Error setting Google Maps zoom:", error);
+      }
     }
-  }, [currentZoom]);
+  }, [currentZoom, currentProvider]);
 
   const handleZoomIn = () => {
     const newZoom = Math.min(currentZoom + 1, 18);
@@ -218,6 +500,11 @@ const MapView: React.FC<MapViewProps> = ({
     setCurrentZoom(newZoom);
   };
 
+  const handleProviderChange = (provider: MapProvider) => {
+    setCurrentProvider(provider);
+    onProviderChange(provider);
+  };
+
   return (
     <Card className="w-full h-full bg-white p-4 relative">
       {/* Map Container */}
@@ -225,6 +512,11 @@ const MapView: React.FC<MapViewProps> = ({
 
       {/* Map Controls */}
       <div className="absolute right-4 top-4 flex flex-col gap-2 z-[1000]">
+        <MapProviderToggle
+          currentProvider={currentProvider}
+          onProviderChange={handleProviderChange}
+        />
+
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -258,11 +550,31 @@ const MapView: React.FC<MapViewProps> = ({
                 variant="secondary"
                 size="icon"
                 onClick={() => {
-                  if (mapInstanceRef.current && locations.length > 0) {
+                  if (!mapInstanceRef.current || locations.length === 0) return;
+
+                  // Find first valid location
+                  const validLocation =
+                    locations.find((loc) => loc.lat !== 0 && loc.lng !== 0) ||
+                    locations[0];
+
+                  if (currentProvider === "openstreetmap" && window.L) {
                     mapInstanceRef.current.setView(
-                      [locations[0].lat, locations[0].lng],
+                      [validLocation.lat, validLocation.lng],
                       currentZoom,
                     );
+                  } else if (
+                    currentProvider === "google" &&
+                    window.google?.maps &&
+                    mapInstanceRef.current
+                  ) {
+                    try {
+                      mapInstanceRef.current.setCenter({
+                        lat: validLocation.lat,
+                        lng: validLocation.lng,
+                      });
+                    } catch (error) {
+                      console.error("Error navigating in Google Maps:", error);
+                    }
                   }
                 }}
               >
@@ -297,10 +609,11 @@ const MapView: React.FC<MapViewProps> = ({
   );
 };
 
-// Add Leaflet types to Window interface
+// Add map library types to Window interface
 declare global {
   interface Window {
     L: any;
+    google: any;
   }
 }
 
