@@ -19,6 +19,8 @@ import {
 import { motion, Reorder } from "framer-motion";
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
+import { Input } from "./ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +28,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
+import NearbyAttractionsDialog from "./NearbyAttractionsDialog";
+import { useToast } from "./ui/use-toast";
 
 interface Activity {
   id: string;
@@ -34,7 +38,7 @@ interface Activity {
   duration: string;
   location: string;
   description?: string;
-  type?: "attraction" | "meal" | "transport" | "rest";
+  type?: "attraction" | "meal" | "transport" | "rest" | "accommodation";
   coordinates?: {
     lat: number;
     lng: number;
@@ -48,6 +52,85 @@ interface DailyScheduleProps {
   onDelete?: (id: string) => void;
   onAdd?: () => void;
 }
+
+interface DurationEditorProps {
+  duration: string;
+  activityId: string;
+  activityTime: string;
+  onUpdate: (newDuration: string) => void;
+}
+
+const DurationEditor: React.FC<DurationEditorProps> = ({
+  duration,
+  activityId,
+  activityTime,
+  onUpdate,
+}) => {
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [value, setValue] = React.useState(duration);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  React.useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isEditing]);
+
+  const handleUpdate = () => {
+    // Validate the input format
+    const isValid = /^\d+(\.\d+)?[hm]$/.test(value);
+    if (!isValid) {
+      toast({
+        title: "Invalid format",
+        description: "Please use formats like 1h, 30m, or 1.5h",
+        variant: "destructive",
+      });
+      setValue(duration); // Reset to original value
+      return;
+    }
+
+    if (value !== duration) {
+      onUpdate(value);
+    }
+    setIsEditing(false);
+  };
+
+  return (
+    <Popover open={isEditing} onOpenChange={setIsEditing}>
+      <PopoverTrigger asChild>
+        <span
+          className="text-sm text-gray-400 cursor-pointer hover:text-primary hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          ({duration})
+        </span>
+      </PopoverTrigger>
+      <PopoverContent className="w-48" onClick={(e) => e.stopPropagation()}>
+        <div className="space-y-2">
+          <h4 className="font-medium text-sm">Edit Duration</h4>
+          <Input
+            ref={inputRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleUpdate();
+              } else if (e.key === "Escape") {
+                setValue(duration);
+                setIsEditing(false);
+              }
+            }}
+            onBlur={handleUpdate}
+            placeholder="e.g. 1h, 30m, 1.5h"
+            className="h-8"
+          />
+          <p className="text-xs text-muted-foreground">Format: 1h, 30m, 1.5h</p>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 const defaultActivities: Activity[] = [
   {
@@ -90,6 +173,15 @@ const DailySchedule = ({
     Record<string, boolean>
   >({});
   const [showAddDialog, setShowAddDialog] = React.useState(false);
+  const [showNearbyAttractionsDialog, setShowNearbyAttractionsDialog] =
+    React.useState(false);
+  const [nearbyAttractions, setNearbyAttractions] = React.useState<any[]>([]);
+  const [isLoadingAttractions, setIsLoadingAttractions] = React.useState(false);
+  const [currentLocation, setCurrentLocation] = React.useState<{
+    lat: number;
+    lng: number;
+  }>({ lat: 0, lng: 0 });
+  const { toast } = useToast();
 
   React.useEffect(() => {
     setItems(activities);
@@ -111,8 +203,75 @@ const DailySchedule = ({
     number | null
   >(null);
 
-  const handleAddActivity = (type: "attraction" | "meal" | "rest") => {
+  const fetchNearbyAttractions = async (
+    coordinates: { lat: number; lng: number },
+    city: string,
+  ) => {
+    setIsLoadingAttractions(true);
+    try {
+      // Import the getNearbyAttractions function from gemini.ts
+      const { getNearbyAttractions } = await import("../lib/gemini");
+
+      // Call the function to get nearby attractions
+      const attractions = await getNearbyAttractions(coordinates, city);
+      setNearbyAttractions(attractions);
+    } catch (error) {
+      console.error("Error fetching nearby attractions:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch nearby attractions",
+        variant: "destructive",
+      });
+      setNearbyAttractions([]);
+    } finally {
+      setIsLoadingAttractions(false);
+    }
+  };
+
+  const handleAddActivity = (
+    type: "attraction" | "meal" | "rest" | "accommodation",
+  ) => {
     console.log(`Adding new ${type} activity`);
+
+    if (type === "attraction" && clickedButtonIndex !== null) {
+      // Get the activities before and after the clicked button to determine location
+      const prevActivityIndex =
+        clickedButtonIndex > 0 ? clickedButtonIndex - 1 : 0;
+      const nextActivityIndex =
+        clickedButtonIndex < sortedActivities.length
+          ? clickedButtonIndex
+          : sortedActivities.length - 1;
+
+      const prevActivity = sortedActivities[prevActivityIndex];
+      const nextActivity = sortedActivities[nextActivityIndex];
+
+      // Use the coordinates from the previous activity as a reference point
+      if (prevActivity?.coordinates) {
+        setCurrentLocation(prevActivity.coordinates);
+        fetchNearbyAttractions(
+          prevActivity.coordinates,
+          prevActivity.city || "",
+        );
+      } else if (nextActivity?.coordinates) {
+        setCurrentLocation(nextActivity.coordinates);
+        fetchNearbyAttractions(
+          nextActivity.coordinates,
+          nextActivity.city || "",
+        );
+      } else {
+        // If no coordinates available, show error
+        toast({
+          title: "Error",
+          description: "Could not determine location for nearby attractions",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setShowAddDialog(false);
+      setShowNearbyAttractionsDialog(true);
+      return;
+    }
 
     if (type === "rest" && clickedButtonIndex !== null) {
       // Get the activity directly above the clicked button
@@ -261,6 +420,8 @@ const DailySchedule = ({
         return "bg-purple-100 text-purple-800";
       case "rest":
         return "bg-amber-100 text-amber-800";
+      case "accommodation":
+        return "bg-indigo-100 text-indigo-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -336,9 +497,72 @@ const DailySchedule = ({
                             <span className="text-sm text-gray-600">
                               {activity.time}
                             </span>
-                            <span className="text-sm text-gray-400">
-                              ({activity.duration})
-                            </span>
+                            <DurationEditor
+                              duration={activity.duration}
+                              activityId={activity.id}
+                              activityTime={activity.time}
+                              onUpdate={(newDuration) => {
+                                // Update the activity duration
+                                const updatedItems = items.map((item) =>
+                                  item.id === activity.id
+                                    ? { ...item, duration: newDuration }
+                                    : item,
+                                );
+
+                                // Recalculate times for all activities after this one
+                                const sortedUpdatedItems = [
+                                  ...updatedItems,
+                                ].sort((a, b) => {
+                                  const timeA = parseInt(
+                                    a.time.replace(":", ""),
+                                  );
+                                  const timeB = parseInt(
+                                    b.time.replace(":", ""),
+                                  );
+                                  return timeA - timeB;
+                                });
+
+                                const activityIndex =
+                                  sortedUpdatedItems.findIndex(
+                                    (item) => item.id === activity.id,
+                                  );
+
+                                if (activityIndex !== -1) {
+                                  let currentTime = activity.time;
+                                  let currentDuration =
+                                    getDurationInMinutes(newDuration);
+
+                                  // Calculate the end time of the current activity
+                                  let nextStartTime = addTimeToString(
+                                    currentTime,
+                                    currentDuration,
+                                  );
+
+                                  // Update all subsequent activities
+                                  for (
+                                    let i = activityIndex + 1;
+                                    i < sortedUpdatedItems.length;
+                                    i++
+                                  ) {
+                                    sortedUpdatedItems[i] = {
+                                      ...sortedUpdatedItems[i],
+                                      time: nextStartTime,
+                                    };
+
+                                    // Calculate the end time of this activity for the next one
+                                    nextStartTime = addTimeToString(
+                                      nextStartTime,
+                                      getDurationInMinutes(
+                                        sortedUpdatedItems[i].duration,
+                                      ),
+                                    );
+                                  }
+                                }
+
+                                setItems(sortedUpdatedItems);
+                                onReorder(sortedUpdatedItems);
+                              }}
+                            />
                             {activity.type && (
                               <Badge
                                 variant="secondary"
@@ -444,9 +668,102 @@ const DailySchedule = ({
                 <span>Rest</span>
               </div>
             </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start p-4 h-auto"
+              onClick={() => handleAddActivity("accommodation")}
+            >
+              <div className="flex items-center">
+                <span className="w-3 h-3 rounded-full bg-indigo-500 mr-3"></span>
+                <span>Accommodation</span>
+              </div>
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Nearby Attractions Dialog */}
+      <NearbyAttractionsDialog
+        open={showNearbyAttractionsDialog}
+        onOpenChange={setShowNearbyAttractionsDialog}
+        location={currentLocation}
+        isLoading={isLoadingAttractions}
+        attractions={nearbyAttractions}
+        onSelectAttraction={(attraction) => {
+          if (clickedButtonIndex === null) return;
+
+          // Get the activity directly above the clicked button for time calculation
+          const prevActivityIndex =
+            clickedButtonIndex > 0 ? clickedButtonIndex - 1 : 0;
+          const prevActivity = sortedActivities[prevActivityIndex];
+
+          // Create a new activity from the selected attraction
+          const newActivity: Activity = {
+            id: Date.now().toString(),
+            time: calculateTimeForNewActivity(clickedButtonIndex),
+            title: attraction.name,
+            duration: attraction.duration || "1h",
+            location: attraction.location,
+            type: "attraction",
+            description: attraction.description,
+            coordinates: currentLocation,
+            city: prevActivity.city || "",
+          };
+
+          // Insert the new activity at the right position
+          const newItems = [...items];
+          newItems.splice(clickedButtonIndex, 0, newActivity);
+
+          // Adjust times of subsequent activities
+          const sortedNewItems = [...newItems].sort((a, b) => {
+            const timeA = parseInt(a.time.replace(":", ""));
+            const timeB = parseInt(b.time.replace(":", ""));
+            return timeA - timeB;
+          });
+
+          // Recalculate all activity times after the new one
+          let currentTime = newActivity.time;
+          let currentDuration = getDurationInMinutes(newActivity.duration);
+
+          // First update the new activity's end time
+          let nextStartTime = addTimeToString(currentTime, currentDuration);
+
+          // Then update all subsequent activities
+          for (let i = 0; i < newItems.length; i++) {
+            const item = newItems[i];
+
+            // Skip activities that come before the new one in time
+            if (
+              parseInt(item.time.replace(":", "")) <
+              parseInt(newActivity.time.replace(":", ""))
+            ) {
+              continue;
+            }
+
+            // Skip the new activity itself
+            if (item.id === newActivity.id) {
+              continue;
+            }
+
+            // Update this activity's start time to be the end time of the previous activity
+            newItems[i] = {
+              ...item,
+              time: nextStartTime,
+            };
+
+            // Calculate the end time of this activity for the next one
+            nextStartTime = addTimeToString(
+              nextStartTime,
+              getDurationInMinutes(item.duration),
+            );
+          }
+
+          setItems(newItems);
+          onReorder(newItems);
+          setShowNearbyAttractionsDialog(false);
+          setClickedButtonIndex(null);
+        }}
+      />
     </Card>
   );
 };

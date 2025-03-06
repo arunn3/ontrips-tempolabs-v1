@@ -69,12 +69,268 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   const [selectedDay, setSelectedDay] = React.useState(0);
   const [itineraryDays, setItineraryDays] = React.useState<any[]>([]);
   const [activeTab, setActiveTab] = React.useState("schedule");
+  const [isGeneratingItinerary, setIsGeneratingItinerary] =
+    React.useState(false);
+  const [generationProgress, setGenerationProgress] = React.useState(0);
 
   React.useEffect(() => {
-    // Listen for itinerary updates from ChatInterface
+    // Define the event handler function
     const handleItineraryUpdate = (event: CustomEvent) => {
       console.log("Itinerary update event received:", event.detail);
-      loadItinerary();
+
+      if (event.detail.status === "generating") {
+        // Clear current itinerary and show progress
+        setActivitiesList([]);
+        setItineraryDays([]);
+        setActiveTab("schedule"); // Force switch to schedule tab to show progress
+        setIsGeneratingItinerary(true);
+        setGenerationProgress(event.detail.progress || 0);
+      } else if (event.detail.status === "complete") {
+        // Itinerary generation complete
+        setIsGeneratingItinerary(false);
+        setGenerationProgress(100);
+        setActiveTab("schedule"); // Ensure we're on the schedule tab
+
+        // If the event contains an itinerary directly, use it
+        if (event.detail.itinerary) {
+          const itinerary = event.detail.itinerary;
+          setItineraryDays(itinerary.days);
+
+          // Process the first day's activities
+          if (itinerary.days && itinerary.days.length > 0) {
+            const firstDay = itinerary.days[0];
+            const processActivities = async () => {
+              try {
+                const locationServiceModule = await import(
+                  "../lib/locationService"
+                );
+
+                const convertedActivities = await Promise.all(
+                  firstDay.activities.map(async (activity, index) => {
+                    // Determine coordinates
+                    let coordinates;
+                    if (activity.lat && activity.long) {
+                      coordinates = {
+                        lat: parseFloat(activity.lat),
+                        lng: parseFloat(activity.long),
+                      };
+                    } else {
+                      // Query the database for coordinates
+                      const locationText =
+                        activity.location || activity.title || "";
+                      coordinates =
+                        await locationServiceModule.getCoordinatesForLocation(
+                          locationText,
+                        );
+                    }
+
+                    return {
+                      id: index.toString(),
+                      time: activity.time,
+                      title: activity.title,
+                      duration: activity.duration,
+                      location: activity.location,
+                      description: activity.description,
+                      type: activity.type,
+                      coordinates: coordinates,
+                      city: activity.city || "",
+                    };
+                  }),
+                );
+                setActivitiesList(convertedActivities);
+              } catch (error) {
+                console.error("Error processing activities:", error);
+              }
+            };
+            processActivities();
+          }
+        } else {
+          // Use the function directly instead of the reference
+          const loadStoredItinerary = async () => {
+            try {
+              const storedItinerary =
+                localStorage.getItem("generatedItinerary");
+              if (storedItinerary) {
+                const parsedItinerary = JSON.parse(storedItinerary);
+                console.log("Found stored itinerary:", parsedItinerary);
+
+                // Store all days from the itinerary
+                if (parsedItinerary.days && parsedItinerary.days.length > 0) {
+                  setItineraryDays(parsedItinerary.days);
+
+                  // Import location service
+                  const locationServiceModule = await import(
+                    "../lib/locationService"
+                  );
+
+                  // Convert the first day's activities to the format expected by DailySchedule
+                  const firstDay = parsedItinerary.days[0];
+                  const convertedActivities = await Promise.all(
+                    firstDay.activities.map(async (activity, index) => {
+                      // Determine coordinates
+                      let coordinates;
+                      if (activity.lat && activity.long) {
+                        coordinates = {
+                          lat: parseFloat(activity.lat),
+                          lng: parseFloat(activity.long),
+                        };
+                      } else {
+                        // Query the database for coordinates
+                        const locationText =
+                          activity.location || activity.title || "";
+                        coordinates =
+                          await locationServiceModule.getCoordinatesForLocation(
+                            locationText,
+                          );
+                      }
+
+                      return {
+                        id: index.toString(),
+                        time: activity.time,
+                        title: activity.title,
+                        duration: activity.duration,
+                        location: activity.location,
+                        description: activity.description,
+                        type: activity.type,
+                        coordinates: coordinates,
+                        city: activity.city || "",
+                      };
+                    }),
+                  );
+                  setActivitiesList(convertedActivities);
+                }
+              }
+            } catch (error) {
+              console.error(
+                "Error loading itinerary from localStorage:",
+                error,
+              );
+            }
+          };
+          loadStoredItinerary();
+        }
+      } else if (event.detail.status === "error") {
+        // Error in itinerary generation
+        setIsGeneratingItinerary(false);
+      } else if (event.detail.status === "clear") {
+        // Clear the itinerary
+        setActivitiesList([]);
+        setItineraryDays([]);
+      } else if (event.detail.itinerary) {
+        // If the event contains an itinerary directly, use it
+        const itinerary = event.detail.itinerary;
+        setItineraryDays(itinerary.days);
+        setActiveTab("schedule"); // Switch to schedule tab to show the new itinerary
+
+        // Process the first day's activities
+        if (itinerary.days && itinerary.days.length > 0) {
+          const firstDay = itinerary.days[0];
+          const processActivities = async () => {
+            try {
+              const locationServiceModule = await import(
+                "../lib/locationService"
+              );
+
+              const convertedActivities = await Promise.all(
+                firstDay.activities.map(async (activity, index) => {
+                  // Determine coordinates
+                  let coordinates;
+                  if (activity.lat && activity.long) {
+                    coordinates = {
+                      lat: parseFloat(activity.lat),
+                      lng: parseFloat(activity.long),
+                    };
+                  } else {
+                    // Query the database for coordinates
+                    const locationText =
+                      activity.location || activity.title || "";
+                    coordinates =
+                      await locationServiceModule.getCoordinatesForLocation(
+                        locationText,
+                      );
+                  }
+
+                  return {
+                    id: index.toString(),
+                    time: activity.time,
+                    title: activity.title,
+                    duration: activity.duration,
+                    location: activity.location,
+                    description: activity.description,
+                    type: activity.type,
+                    coordinates: coordinates,
+                    city: activity.city || "",
+                  };
+                }),
+              );
+              setActivitiesList(convertedActivities);
+            } catch (error) {
+              console.error("Error processing activities:", error);
+            }
+          };
+          processActivities();
+        }
+      } else {
+        // Default case - just load the itinerary
+        const loadStoredItinerary = async () => {
+          try {
+            const storedItinerary = localStorage.getItem("generatedItinerary");
+            if (storedItinerary) {
+              const parsedItinerary = JSON.parse(storedItinerary);
+              console.log("Found stored itinerary:", parsedItinerary);
+
+              // Store all days from the itinerary
+              if (parsedItinerary.days && parsedItinerary.days.length > 0) {
+                setItineraryDays(parsedItinerary.days);
+
+                // Import location service
+                const locationServiceModule = await import(
+                  "../lib/locationService"
+                );
+
+                // Convert the first day's activities to the format expected by DailySchedule
+                const firstDay = parsedItinerary.days[0];
+                const convertedActivities = await Promise.all(
+                  firstDay.activities.map(async (activity, index) => {
+                    // Determine coordinates
+                    let coordinates;
+                    if (activity.lat && activity.long) {
+                      coordinates = {
+                        lat: parseFloat(activity.lat),
+                        lng: parseFloat(activity.long),
+                      };
+                    } else {
+                      // Query the database for coordinates
+                      const locationText =
+                        activity.location || activity.title || "";
+                      coordinates =
+                        await locationServiceModule.getCoordinatesForLocation(
+                          locationText,
+                        );
+                    }
+
+                    return {
+                      id: index.toString(),
+                      time: activity.time,
+                      title: activity.title,
+                      duration: activity.duration,
+                      location: activity.location,
+                      description: activity.description,
+                      type: activity.type,
+                      coordinates: coordinates,
+                      city: activity.city || "",
+                    };
+                  }),
+                );
+                setActivitiesList(convertedActivities);
+              }
+            }
+          } catch (error) {
+            console.error("Error loading itinerary from localStorage:", error);
+          }
+        };
+        loadStoredItinerary();
+      }
     };
 
     window.addEventListener(
@@ -91,8 +347,9 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
     };
   }, []);
 
+  // This useEffect is for initial load and URL changes
   React.useEffect(() => {
-    const loadItinerary = async () => {
+    const loadStoredItinerary = async () => {
       try {
         const storedItinerary = localStorage.getItem("generatedItinerary");
         if (storedItinerary) {
@@ -149,9 +406,8 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
         console.error("Error loading itinerary from localStorage:", error);
       }
     };
-
-    loadItinerary();
-  }, [window.location.search]); // Re-run when URL search params change
+    loadStoredItinerary();
+  }, [window.location.search, activeTab]); // Re-run when URL search params or active tab changes
 
   // Import the location service
   const [locationService, setLocationService] = React.useState<any>(null);
@@ -253,8 +509,10 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
       type = "restaurant";
     } else if (
       activity.title.toLowerCase().includes("hotel") ||
-      activity.title.toLowerCase().includes("rest") ||
-      activity.title.toLowerCase().includes("accommodation")
+      activity.title.toLowerCase().includes("resort") ||
+      activity.title.toLowerCase().includes("check-in") ||
+      activity.title.toLowerCase().includes("accommodation") ||
+      activity.type === "accommodation"
     ) {
       type = "hotel";
     }
@@ -267,6 +525,8 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
       type,
     };
   });
+
+  // Removed loadItinerary function as it's now inlined in the useEffects
 
   return (
     <div className="h-[calc(100vh-120px)] w-full bg-gray-50 p-6 flex flex-col overflow-hidden">
@@ -329,18 +589,42 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
         </TabsList>
 
         <TabsContent value="schedule" className="flex-1 h-full overflow-hidden">
-          <DailySchedule
-            activities={activitiesList}
-            onReorder={(newActivities) => {
-              console.log("Reordered:", newActivities);
-              setActivitiesList(newActivities);
-            }}
-            onDelete={(id) => {
-              console.log("Delete:", id);
-              setActivitiesList(activitiesList.filter((a) => a.id !== id));
-            }}
-            onAdd={() => console.log("Add new activity")}
-          />
+          {isGeneratingItinerary ? (
+            <div className="flex flex-col items-center justify-center h-full p-8 space-y-4">
+              <div className="text-center space-y-2">
+                <h3 className="text-lg font-medium">
+                  Generating your itinerary...
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  This may take a minute or two
+                </p>
+              </div>
+              <div className="w-full max-w-md">
+                <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all duration-500 ease-in-out"
+                    style={{ width: `${generationProgress}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-center mt-2 text-muted-foreground">
+                  {generationProgress}% complete
+                </p>
+              </div>
+            </div>
+          ) : (
+            <DailySchedule
+              activities={activitiesList}
+              onReorder={(newActivities) => {
+                console.log("Reordered:", newActivities);
+                setActivitiesList(newActivities);
+              }}
+              onDelete={(id) => {
+                console.log("Delete:", id);
+                setActivitiesList(activitiesList.filter((a) => a.id !== id));
+              }}
+              onAdd={() => console.log("Add new activity")}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="map" className="flex-1 h-full overflow-hidden">

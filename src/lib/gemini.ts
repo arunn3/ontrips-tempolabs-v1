@@ -341,6 +341,62 @@ export async function generateItinerary(
   }
 }
 
+export async function getNearbyAttractions(
+  coordinates: { lat: number; lng: number },
+  city: string = "",
+): Promise<
+  Array<{
+    name: string;
+    description: string;
+    duration: string;
+    location: string;
+    type: string;
+  }>
+> {
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+
+    // Create a prompt to get nearby attractions
+    const prompt = `Given these coordinates: latitude ${coordinates.lat}, longitude ${coordinates.lng} ${city ? `in ${city}` : ""}, suggest 5 nearby tourist attractions or points of interest.
+
+Return ONLY a JSON array with this structure (no other text):
+[
+  {
+    "name": "Attraction Name",
+    "description": "Brief description of the attraction",
+    "duration": "1-2h",
+    "location": "Address or area",
+    "type": "attraction"
+  }
+]
+`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    try {
+      // Clean up the response text to ensure it's valid JSON
+      let cleanText = text.trim();
+      const startIndex = cleanText.indexOf("[");
+      const endIndex = cleanText.lastIndexOf("]") + 1;
+
+      if (startIndex === -1 || endIndex === -1) {
+        throw new Error("Invalid response format");
+      }
+
+      cleanText = cleanText.substring(startIndex, endIndex);
+      return JSON.parse(cleanText);
+    } catch (parseError) {
+      console.error("Error parsing attractions:", parseError);
+      throw new Error("Failed to parse nearby attractions");
+    }
+  } catch (error) {
+    console.error("Error fetching nearby attractions:", error);
+    throw error;
+  }
+}
+
 export async function getDestinationDetails(
   destination: string,
   preferences: Record<string, string[]>,

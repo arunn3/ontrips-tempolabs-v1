@@ -403,6 +403,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [isGeneratingItinerary, setIsGeneratingItinerary] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
   const [showPublicPrivateDialog, setShowPublicPrivateDialog] = useState(false);
   const [pendingSaveData, setPendingSaveData] = useState<{
     userId: string;
@@ -556,7 +557,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
           // Dispatch event to clear the schedule view
           const itineraryUpdatedEvent = new CustomEvent("itineraryUpdated", {
-            detail: { itinerary: null },
+            detail: { itinerary: null, status: "clear" },
           });
           window.dispatchEvent(itineraryUpdatedEvent);
         }
@@ -618,6 +619,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               onClick={() => {
                 // Reset the chat but keep the current selections and destination
                 setCurrentQuestionIndex(0);
+                // Clear the selected destination and itinerary
+                setSelectedDestination(null);
+                localStorage.removeItem("selectedDestination");
+                localStorage.removeItem("generatedItinerary");
+
+                // Dispatch event to clear the schedule view
+                const itineraryUpdatedEvent = new CustomEvent(
+                  "itineraryUpdated",
+                  {
+                    detail: { itinerary: null, status: "clear" },
+                  },
+                );
+                window.dispatchEvent(itineraryUpdatedEvent);
+
                 // Reset messages to initial state
                 setMessages([
                   {
@@ -753,6 +768,33 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         ) => {
                           try {
                             setIsGeneratingItinerary(true);
+                            setGenerationProgress(0);
+
+                            // Dispatch event to clear the schedule view and show progress
+                            const startEvent = new CustomEvent(
+                              "itineraryUpdated",
+                              {
+                                detail: { status: "generating", progress: 0 },
+                              },
+                            );
+                            window.dispatchEvent(startEvent);
+
+                            // Update progress periodically
+                            const progressInterval = setInterval(() => {
+                              const progress = Math.min(
+                                95,
+                                generationProgress +
+                                  Math.floor(Math.random() * 10) +
+                                  5,
+                              );
+                              setGenerationProgress(progress);
+                              window.dispatchEvent(
+                                new CustomEvent("itineraryUpdated", {
+                                  detail: { status: "generating", progress },
+                                }),
+                              );
+                            }, 2000);
+
                             // Store the selected destination before generating itinerary
                             const currentDestination = destination;
                             setSelectedDestination(currentDestination);
@@ -760,20 +802,80 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               "Current Destination: %s",
                               currentDestination,
                             );
-                            const { generateItinerary } = await import(
-                              "../lib/gemini"
-                            );
-                            const duration = selections.duration?.[0]
-                              ?.toLowerCase()
-                              .includes("week")
-                              ? 7
-                              : 3;
-                            const itinerary = await generateItinerary(
-                              currentDestination.title,
-                              selections,
-                              startDate,
-                              duration,
-                            );
+
+                            // First check if there's a matching public itinerary in the database
+                            let itinerary;
+                            try {
+                              const { data: userData } =
+                                await supabase.auth.getUser();
+                              if (userData.user) {
+                                // Check for public itineraries matching the destination and preferences
+                                const { data: matchingItineraries } =
+                                  await supabase
+                                    .from("itineraries")
+                                    .select("*")
+                                    .eq("destination", currentDestination.title)
+                                    .eq("is_public", true)
+                                    .limit(1);
+
+                                if (
+                                  matchingItineraries &&
+                                  matchingItineraries.length > 0
+                                ) {
+                                  // Found a matching public itinerary
+                                  console.log(
+                                    "Found matching public itinerary:",
+                                    matchingItineraries[0],
+                                  );
+                                  itinerary =
+                                    matchingItineraries[0].itinerary_data;
+
+                                  // Adjust the dates to match the selected start date
+                                  if (
+                                    itinerary.days &&
+                                    itinerary.days.length > 0
+                                  ) {
+                                    const newDays = [...itinerary.days];
+                                    const startDateObj = new Date(startDate);
+
+                                    for (let i = 0; i < newDays.length; i++) {
+                                      const dayDate = new Date(startDateObj);
+                                      dayDate.setDate(
+                                        startDateObj.getDate() + i,
+                                      );
+                                      newDays[i].date = dayDate
+                                        .toISOString()
+                                        .split("T")[0];
+                                    }
+
+                                    itinerary.days = newDays;
+                                  }
+                                }
+                              }
+                            } catch (dbError) {
+                              console.error(
+                                "Error checking for public itineraries:",
+                                dbError,
+                              );
+                            }
+
+                            // If no matching itinerary was found, generate a new one
+                            if (!itinerary) {
+                              const { generateItinerary } = await import(
+                                "../lib/gemini"
+                              );
+                              const duration = selections.duration?.[0]
+                                ?.toLowerCase()
+                                .includes("week")
+                                ? 7
+                                : 3;
+                              itinerary = await generateItinerary(
+                                currentDestination.title,
+                                selections,
+                                startDate,
+                                duration,
+                              );
+                            }
                             console.log("Generated itinerary:", itinerary);
 
                             // Store the itinerary in localStorage
@@ -831,20 +933,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
                             // Save to Supabase if user is logged in
                             try {
-                              const { saveItinerary } = await import(
-                                "../lib/itineraryStorage"
-                              );
                               const { data } = await supabase.auth.getUser();
 
                               if (data.user) {
-                                // Set pending save data and show dialog
-                                setPendingSaveData({
-                                  userId: data.user.id,
-                                  destination: currentDestination.title,
+                                // Save as public by default without showing dialog
+                                const { saveItinerary } = await import(
+                                  "../lib/itineraryStorage"
+                                );
+                                await saveItinerary(
+                                  data.user.id,
+                                  currentDestination.title,
                                   selections,
                                   itinerary,
+                                  true, // Set isPublic to true by default
+                                );
+
+                                toast({
+                                  title: "Itinerary Saved",
+                                  description:
+                                    "Your itinerary has been saved and is public.",
                                 });
-                                setShowPublicPrivateDialog(true);
                               }
                             } catch (saveError) {
                               console.error(
@@ -882,11 +990,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               JSON.stringify(selections),
                             );
 
+                            // Clear the progress interval
+                            clearInterval(progressInterval);
+
                             // Force a refresh of the schedule view by dispatching a custom event
+                            // Pass the actual itinerary object directly in the event
                             const itineraryUpdatedEvent = new CustomEvent(
                               "itineraryUpdated",
                               {
-                                detail: { itinerary },
+                                detail: {
+                                  itinerary: itinerary,
+                                  status: "complete",
+                                  progress: 100,
+                                },
                               },
                             );
                             window.dispatchEvent(itineraryUpdatedEvent);
@@ -903,6 +1019,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                             }, 100);
                           } catch (error) {
                             console.error("Error generating itinerary:", error);
+
+                            // Notify schedule view of the error
+                            const errorEvent = new CustomEvent(
+                              "itineraryUpdated",
+                              {
+                                detail: { status: "error" },
+                              },
+                            );
+                            window.dispatchEvent(errorEvent);
                           } finally {
                             setIsGeneratingItinerary(false);
                           }
@@ -1078,18 +1203,86 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             const generateFn = async () => {
               try {
                 setIsGeneratingItinerary(true);
-                const { generateItinerary } = await import("../lib/gemini");
-                const duration = selections.duration?.[0]
-                  ?.toLowerCase()
-                  .includes("week")
-                  ? 7
-                  : 3;
-                const itinerary = await generateItinerary(
-                  selectedDest.title,
-                  selections,
-                  date,
-                  duration,
-                );
+                setGenerationProgress(0);
+
+                // Dispatch event to clear the schedule view and show progress
+                const startEvent = new CustomEvent("itineraryUpdated", {
+                  detail: { status: "generating", progress: 0 },
+                });
+                window.dispatchEvent(startEvent);
+
+                // Update progress periodically
+                const progressInterval = setInterval(() => {
+                  const progress = Math.min(
+                    95,
+                    generationProgress + Math.floor(Math.random() * 10) + 5,
+                  );
+                  setGenerationProgress(progress);
+                  window.dispatchEvent(
+                    new CustomEvent("itineraryUpdated", {
+                      detail: { status: "generating", progress },
+                    }),
+                  );
+                }, 2000);
+
+                // First check if there's a matching public itinerary in the database
+                let itinerary;
+                try {
+                  const { data: userData } = await supabase.auth.getUser();
+                  if (userData.user) {
+                    // Check for public itineraries matching the destination and preferences
+                    const { data: matchingItineraries } = await supabase
+                      .from("itineraries")
+                      .select("*")
+                      .eq("destination", selectedDest.title)
+                      .eq("is_public", true)
+                      .limit(1);
+
+                    if (matchingItineraries && matchingItineraries.length > 0) {
+                      // Found a matching public itinerary
+                      console.log(
+                        "Found matching public itinerary:",
+                        matchingItineraries[0],
+                      );
+                      itinerary = matchingItineraries[0].itinerary_data;
+
+                      // Adjust the dates to match the selected start date
+                      if (itinerary.days && itinerary.days.length > 0) {
+                        const newDays = [...itinerary.days];
+                        const startDateObj = new Date(date);
+
+                        for (let i = 0; i < newDays.length; i++) {
+                          const dayDate = new Date(startDateObj);
+                          dayDate.setDate(startDateObj.getDate() + i);
+                          newDays[i].date = dayDate.toISOString().split("T")[0];
+                        }
+
+                        itinerary.days = newDays;
+                      }
+                    }
+                  }
+                } catch (dbError) {
+                  console.error(
+                    "Error checking for public itineraries:",
+                    dbError,
+                  );
+                }
+
+                // If no matching itinerary was found, generate a new one
+                if (!itinerary) {
+                  const { generateItinerary } = await import("../lib/gemini");
+                  const duration = selections.duration?.[0]
+                    ?.toLowerCase()
+                    .includes("week")
+                    ? 7
+                    : 3;
+                  itinerary = await generateItinerary(
+                    selectedDest.title,
+                    selections,
+                    date,
+                    duration,
+                  );
+                }
                 console.log("Generated itinerary:", itinerary);
 
                 // Store the itinerary in localStorage
@@ -1141,20 +1334,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
                 // Save to Supabase if user is logged in
                 try {
-                  const { saveItinerary } = await import(
-                    "../lib/itineraryStorage"
-                  );
                   const { data } = await supabase.auth.getUser();
 
                   if (data.user) {
-                    // Set pending save data and show dialog
-                    setPendingSaveData({
-                      userId: data.user.id,
-                      destination: selectedDest.title,
+                    // Save as public by default without showing dialog
+                    const { saveItinerary } = await import(
+                      "../lib/itineraryStorage"
+                    );
+                    await saveItinerary(
+                      data.user.id,
+                      selectedDest.title,
                       selections,
                       itinerary,
+                      true, // Set isPublic to true by default
+                    );
+
+                    toast({
+                      title: "Itinerary Saved",
+                      description:
+                        "Your itinerary has been saved and is public.",
                     });
-                    setShowPublicPrivateDialog(true);
                   }
                 } catch (saveError) {
                   console.error(
@@ -1187,11 +1386,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   JSON.stringify(selections),
                 );
 
+                // Clear the progress interval
+                clearInterval(progressInterval);
+
                 // Force a refresh of the schedule view by dispatching a custom event
+                // Pass the actual itinerary object directly in the event
                 const itineraryUpdatedEvent = new CustomEvent(
                   "itineraryUpdated",
                   {
-                    detail: { itinerary },
+                    detail: {
+                      itinerary: itinerary,
+                      status: "complete",
+                      progress: 100,
+                    },
                   },
                 );
                 window.dispatchEvent(itineraryUpdatedEvent);
@@ -1214,6 +1421,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     "Failed to generate itinerary. Please try again.",
                   variant: "destructive",
                 });
+
+                // Notify schedule view of the error
+                const errorEvent = new CustomEvent("itineraryUpdated", {
+                  detail: { status: "error" },
+                });
+                window.dispatchEvent(errorEvent);
               } finally {
                 setIsGeneratingItinerary(false);
               }
