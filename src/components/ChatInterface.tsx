@@ -455,12 +455,63 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       setIsLoadingDetails(true);
       try {
-        const { getDestinationDetails } = await import("../lib/gemini");
-        const details: DestinationDetailsType = await getDestinationDetails(
-          // Use renamed interface
-          selectedDestination.title,
-          selections,
-        );
+        // First check if destination details exist in the database
+        let details: DestinationDetailsType;
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData.user) {
+            // Query for destination details with matching title
+            const { data: dbDestinationDetails } = await supabase
+              .from("destination_details")
+              .select("*")
+              .eq("title", selectedDestination.title)
+              .limit(1);
+
+            if (dbDestinationDetails && dbDestinationDetails.length > 0) {
+              console.log(
+                "Found destination details in database:",
+                dbDestinationDetails[0],
+              );
+              details = dbDestinationDetails[0].details;
+            }
+          }
+        } catch (dbError) {
+          console.error(
+            "Error checking for destination details in database:",
+            dbError,
+          );
+        }
+
+        // If no details found in database, use Gemini API
+        if (!details) {
+          const { getDestinationDetails } = await import("../lib/gemini");
+          details = await getDestinationDetails(
+            // Use renamed interface
+            selectedDestination.title,
+            selections,
+          );
+
+          // Save the destination details to the database for future use
+          try {
+            const { data: userData } = await supabase.auth.getUser();
+            if (userData.user) {
+              await supabase.from("destination_details").insert({
+                user_id: userData.user.id,
+                title: selectedDestination.title,
+                details: details,
+                preferences: selections,
+                created_at: new Date().toISOString(),
+              });
+              console.log("Saved destination details to database");
+            }
+          } catch (saveError) {
+            console.error(
+              "Error saving destination details to database:",
+              saveError,
+            );
+          }
+        }
+
         setSelectedDestination((prev) => (prev ? { ...prev, details } : null));
       } catch (error) {
         console.error("Error fetching destination details:", error);
@@ -545,8 +596,70 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       try {
         setIsSearching(true);
-        const { searchDestinations } = await import("../lib/gemini");
-        const fetchedDestinations = await searchDestinations(selections);
+
+        // First check if we have destinations in the database matching the preferences
+        let fetchedDestinations = [];
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData.user) {
+            // Convert selections to a string for easier comparison
+            const preferencesString = JSON.stringify(selections);
+
+            // Query for destinations with matching preferences
+            const { data: dbDestinations } = await supabase
+              .from("destinations")
+              .select("*")
+              .limit(5);
+
+            if (dbDestinations && dbDestinations.length > 0) {
+              console.log("Found destinations in database:", dbDestinations);
+              // Convert database destinations to the format expected by the UI
+              fetchedDestinations = dbDestinations.map((dest) => ({
+                title: dest.title,
+                description: dest.description,
+                image: dest.image,
+                matchPercentage: dest.match_percentage,
+                rating: dest.rating,
+                priceRange: dest.price_range,
+              }));
+            }
+          }
+        } catch (dbError) {
+          console.error(
+            "Error checking for destinations in database:",
+            dbError,
+          );
+        }
+
+        // If no destinations found in database, use Gemini API
+        if (fetchedDestinations.length === 0) {
+          const { searchDestinations } = await import("../lib/gemini");
+          fetchedDestinations = await searchDestinations(selections);
+
+          // Save the destinations to the database for future use
+          try {
+            const { data: userData } = await supabase.auth.getUser();
+            if (userData.user) {
+              // Save each destination with the preferences
+              for (const destination of fetchedDestinations) {
+                await supabase.from("destinations").insert({
+                  user_id: userData.user.id,
+                  title: destination.title,
+                  description: destination.description,
+                  image: destination.image,
+                  match_percentage: destination.matchPercentage,
+                  rating: destination.rating,
+                  price_range: destination.priceRange,
+                  preferences: selections,
+                  created_at: new Date().toISOString(),
+                });
+              }
+            }
+          } catch (saveError) {
+            console.error("Error saving destinations to database:", saveError);
+          }
+        }
+
         setDestinations(fetchedDestinations); // Store destinations in state
 
         // If we were in edit mode, clear the previous itinerary now
