@@ -10,6 +10,7 @@ import { useToast } from "./ui/use-toast";
 import { supabase } from "@/lib/supabase";
 import DatePickerDialog from "./DatePickerDialog";
 import PublicPrivateDialog from "./PublicPrivateDialog";
+import { useItinerary } from "@/context/ItineraryContext";
 
 interface Message {
   id: string;
@@ -393,6 +394,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onSendMessage = () => {},
   isLoading = false,
 }: ChatInterfaceProps) => {
+  const { setItinerary } = useItinerary();
   const [showDatePickerDialog, setShowDatePickerDialog] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selections, setSelections] = useState<Record<string, string[]>>({});
@@ -720,7 +722,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       <div className="p-4 border-b space-y-4 sticky top-0 bg-white z-10">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold flex items-center gap-2">
-            <span>AI Travel Assistant</span>
+            <span>SagaScout</span>
             <Badge variant="secondary" className="text-xs font-normal">
               NEW
             </Badge>
@@ -1049,23 +1051,37 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               const { data } = await supabase.auth.getUser();
 
                               if (data.user) {
-                                // Save as public by default without showing dialog
-                                const { saveItinerary } = await import(
-                                  "../lib/itineraryStorage"
-                                );
-                                await saveItinerary(
-                                  data.user.id,
-                                  currentDestination.title,
-                                  selections,
-                                  itinerary,
-                                  true, // Set isPublic to true by default
-                                );
+                                // Check if an itinerary for this destination already exists
+                                const { data: existingItineraries } =
+                                  await supabase
+                                    .from("itineraries")
+                                    .select("*")
+                                    .eq("user_id", data.user.id)
+                                    .eq("destination", currentDestination.title)
+                                    .limit(1);
 
-                                toast({
-                                  title: "Itinerary Saved",
-                                  description:
-                                    "Your itinerary has been saved and is public.",
-                                });
+                                // Only save if no existing itinerary is found
+                                if (
+                                  !existingItineraries ||
+                                  existingItineraries.length === 0
+                                ) {
+                                  const { saveItinerary } = await import(
+                                    "../lib/itineraryStorage"
+                                  );
+                                  await saveItinerary(
+                                    data.user.id,
+                                    currentDestination.title,
+                                    selections,
+                                    itinerary,
+                                    true, // Set isPublic to true by default
+                                  );
+
+                                  toast({
+                                    title: "Itinerary Saved",
+                                    description:
+                                      "Your itinerary has been saved and is public.",
+                                  });
+                                }
                               }
                             } catch (saveError) {
                               console.error(
@@ -1106,30 +1122,31 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                             // Clear the progress interval
                             clearInterval(progressInterval);
 
-                            // Force a refresh of the schedule view by dispatching a custom event
-                            // Pass the actual itinerary object directly in the event
-                            const itineraryUpdatedEvent = new CustomEvent(
-                              "itineraryUpdated",
+                            // Update the itinerary in the context
+                            setItinerary(itinerary);
+
+                            // Set a flag in localStorage to trigger a reload in ScheduleView
+                            localStorage.setItem(
+                              "itineraryUpdate",
+                              Date.now().toString(),
+                            );
+
+                            // Force a re-render by updating URL parameter
+                            const url = new URL(window.location.href);
+                            url.searchParams.set(
+                              "itineraryUpdate",
+                              Date.now().toString(),
+                            );
+                            window.history.replaceState({}, "", url);
+
+                            // Dispatch a custom event to notify ScheduleView
+                            const customEvent = new CustomEvent(
+                              "itineraryChanged",
                               {
-                                detail: {
-                                  itinerary: itinerary,
-                                  status: "complete",
-                                  progress: 100,
-                                },
+                                detail: { timestamp: Date.now() },
                               },
                             );
-                            window.dispatchEvent(itineraryUpdatedEvent);
-
-                            // Small delay to ensure the event is processed
-                            setTimeout(() => {
-                              // Manually trigger a re-render by updating a URL parameter
-                              const url = new URL(window.location.href);
-                              url.searchParams.set(
-                                "itineraryUpdate",
-                                Date.now().toString(),
-                              );
-                              window.history.replaceState({}, "", url);
-                            }, 100);
+                            document.dispatchEvent(customEvent);
                           } catch (error) {
                             console.error("Error generating itinerary:", error);
 
@@ -1450,23 +1467,36 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   const { data } = await supabase.auth.getUser();
 
                   if (data.user) {
-                    // Save as public by default without showing dialog
-                    const { saveItinerary } = await import(
-                      "../lib/itineraryStorage"
-                    );
-                    await saveItinerary(
-                      data.user.id,
-                      selectedDest.title,
-                      selections,
-                      itinerary,
-                      true, // Set isPublic to true by default
-                    );
+                    // Check if an itinerary for this destination already exists
+                    const { data: existingItineraries } = await supabase
+                      .from("itineraries")
+                      .select("*")
+                      .eq("user_id", data.user.id)
+                      .eq("destination", selectedDest.title)
+                      .limit(1);
 
-                    toast({
-                      title: "Itinerary Saved",
-                      description:
-                        "Your itinerary has been saved and is public.",
-                    });
+                    // Only save if no existing itinerary is found
+                    if (
+                      !existingItineraries ||
+                      existingItineraries.length === 0
+                    ) {
+                      const { saveItinerary } = await import(
+                        "../lib/itineraryStorage"
+                      );
+                      await saveItinerary(
+                        data.user.id,
+                        selectedDest.title,
+                        selections,
+                        itinerary,
+                        true, // Set isPublic to true by default
+                      );
+
+                      toast({
+                        title: "Itinerary Saved",
+                        description:
+                          "Your itinerary has been saved and is public.",
+                      });
+                    }
                   }
                 } catch (saveError) {
                   console.error(
@@ -1502,30 +1532,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 // Clear the progress interval
                 clearInterval(progressInterval);
 
-                // Force a refresh of the schedule view by dispatching a custom event
-                // Pass the actual itinerary object directly in the event
-                const itineraryUpdatedEvent = new CustomEvent(
-                  "itineraryUpdated",
-                  {
-                    detail: {
-                      itinerary: itinerary,
-                      status: "complete",
-                      progress: 100,
-                    },
-                  },
-                );
-                window.dispatchEvent(itineraryUpdatedEvent);
+                // Update the itinerary in the context
+                setItinerary(itinerary);
 
-                // Small delay to ensure the event is processed
-                setTimeout(() => {
-                  // Manually trigger a re-render by updating a URL parameter
-                  const url = new URL(window.location.href);
-                  url.searchParams.set(
-                    "itineraryUpdate",
-                    Date.now().toString(),
-                  );
-                  window.history.replaceState({}, "", url);
-                }, 100);
+                // Set a flag in localStorage to trigger a reload in ScheduleView
+                localStorage.setItem("itineraryUpdate", Date.now().toString());
+
+                // Force a re-render by updating URL parameter
+                const url = new URL(window.location.href);
+                url.searchParams.set("itineraryUpdate", Date.now().toString());
+                window.history.replaceState({}, "", url);
+
+                // Dispatch a custom event to notify ScheduleView
+                const customEvent = new CustomEvent("itineraryChanged", {
+                  detail: { timestamp: Date.now() },
+                });
+                document.dispatchEvent(customEvent);
               } catch (error) {
                 console.error("Error generating itinerary:", error);
                 toast({

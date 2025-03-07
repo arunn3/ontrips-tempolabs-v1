@@ -6,6 +6,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { Calendar, Menu, User } from "lucide-react";
 import AuthModal from "./auth/AuthModal";
 import { useAuth } from "@/context/AuthContext";
+import { Link, useNavigate } from "react-router-dom";
 
 interface HomeProps {
   onMenuClick?: () => void;
@@ -14,6 +15,7 @@ interface HomeProps {
 const Home = ({ onMenuClick = () => {} }: HomeProps) => {
   const [showChat, setShowChat] = React.useState(true);
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -24,7 +26,9 @@ const Home = ({ onMenuClick = () => {} }: HomeProps) => {
             <Button variant="ghost" size="icon" onClick={onMenuClick}>
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-xl font-semibold">Smart Itinerary Planner</h1>
+            <Link to="/" className="text-xl font-semibold">
+              SagaScout
+            </Link>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -34,9 +38,9 @@ const Home = ({ onMenuClick = () => {} }: HomeProps) => {
             >
               {showChat ? "Hide Chat" : "Show Chat"}
             </Button>
-            <Button variant="default" size="sm">
+            <Button variant="outline" size="sm" onClick={() => navigate("/")}>
               <Calendar className="w-4 h-4 mr-2" />
-              View Calendar
+              Explore Destinations
             </Button>
             <AuthModal
               trigger={

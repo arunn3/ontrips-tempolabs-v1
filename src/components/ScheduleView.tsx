@@ -6,6 +6,7 @@ import { Button } from "./ui/button";
 import { Calendar, Filter, Map, List } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { useItinerary } from "@/context/ItineraryContext";
 
 interface Activity {
   id: string;
@@ -75,8 +76,12 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
 
   React.useEffect(() => {
     // Define the event handler function
-    const handleItineraryUpdate = (event: CustomEvent) => {
+    const handleItineraryUpdate = (event: any) => {
+      // Make the handler available globally for direct calls
+      window.handleItineraryUpdateGlobal = handleItineraryUpdate;
       console.log("Itinerary update event received:", event.detail);
+      console.log("Event detail type:", typeof event.detail);
+      console.log("Event detail keys:", Object.keys(event.detail));
 
       if (event.detail.status === "generating") {
         // Clear current itinerary and show progress
@@ -93,6 +98,10 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
 
         // If the event contains an itinerary directly, use it
         if (event.detail.itinerary) {
+          console.log(
+            "Found itinerary in event.detail:",
+            event.detail.itinerary,
+          );
           const itinerary = event.detail.itinerary;
           setItineraryDays(itinerary.days);
 
@@ -218,6 +227,10 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
         setItineraryDays([]);
       } else if (event.detail.itinerary) {
         // If the event contains an itinerary directly, use it
+        console.log(
+          "Found itinerary in event.detail (else if branch):",
+          event.detail.itinerary,
+        );
         const itinerary = event.detail.itinerary;
         setItineraryDays(itinerary.days);
         setActiveTab("schedule"); // Switch to schedule tab to show the new itinerary
@@ -333,17 +346,12 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
       }
     };
 
-    window.addEventListener(
-      "itineraryUpdated",
-      handleItineraryUpdate as EventListener,
-    );
+    // Use a direct function reference without casting
+    window.addEventListener("itineraryUpdated", handleItineraryUpdate);
 
     // Clean up event listener
     return () => {
-      window.removeEventListener(
-        "itineraryUpdated",
-        handleItineraryUpdate as EventListener,
-      );
+      window.removeEventListener("itineraryUpdated", handleItineraryUpdate);
     };
   }, []);
 
@@ -407,6 +415,27 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
       }
     };
     loadStoredItinerary();
+
+    // Also check for the itineraryUpdate flag in localStorage
+    const itineraryUpdateFlag = localStorage.getItem("itineraryUpdate");
+    if (itineraryUpdateFlag) {
+      console.log("Detected itinerary update flag, reloading itinerary");
+      loadStoredItinerary();
+      // Clear the flag after processing
+      localStorage.removeItem("itineraryUpdate");
+    }
+
+    // Add event listener for the custom itineraryChanged event
+    const handleItineraryChanged = () => {
+      console.log("Received itineraryChanged event, reloading itinerary");
+      loadStoredItinerary();
+    };
+
+    document.addEventListener("itineraryChanged", handleItineraryChanged);
+
+    return () => {
+      document.removeEventListener("itineraryChanged", handleItineraryChanged);
+    };
   }, [window.location.search, activeTab]); // Re-run when URL search params or active tab changes
 
   // Import the location service
