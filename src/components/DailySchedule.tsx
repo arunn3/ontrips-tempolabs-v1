@@ -428,17 +428,20 @@ const DailySchedule = ({
   };
 
   return (
-    <Card className="w-full h-full bg-white p-6 flex flex-col">
-      <div className="flex justify-between items-center mb-6 flex-shrink-0">
-        <h2 className="text-2xl font-semibold">Daily Schedule</h2>
+    <Card className="w-full h-full bg-white p-3 sm:p-4 md:p-6 flex flex-col">
+      <div className="flex justify-between items-center mb-3 sm:mb-6 flex-shrink-0">
+        <h2 className="text-lg sm:text-xl md:text-2xl font-semibold">
+          Daily Schedule
+        </h2>
         <Button
           onClick={() => {
             setClickedButtonIndex(0);
             setShowAddDialog(true);
           }}
           size="sm"
+          className="text-xs sm:text-sm"
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
           Add Activity
         </Button>
       </div>

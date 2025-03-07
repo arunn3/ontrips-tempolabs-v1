@@ -25,12 +25,17 @@ const MapProviderToggle: React.FC<MapProviderToggleProps> = ({
         <Button
           variant="secondary"
           size="sm"
-          className="flex items-center gap-2"
+          className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm h-7 sm:h-8 px-2 sm:px-3"
         >
-          <Map className="h-4 w-4" />
-          {currentProvider === "openstreetmap"
-            ? "OpenStreetMap"
-            : "Google Maps"}
+          <Map className="h-3 w-3 sm:h-4 sm:w-4" />
+          <span className="hidden sm:inline">
+            {currentProvider === "openstreetmap"
+              ? "OpenStreetMap"
+              : "Google Maps"}
+          </span>
+          <span className="sm:hidden">
+            {currentProvider === "openstreetmap" ? "OSM" : "GMaps"}
+          </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

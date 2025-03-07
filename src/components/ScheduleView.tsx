@@ -558,12 +558,12 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   // Removed loadItinerary function as it's now inlined in the useEffects
 
   return (
-    <div className="h-[calc(100vh-120px)] w-full bg-gray-50 p-6 flex flex-col overflow-hidden">
-      <Card className="p-4 bg-white mb-6 flex-shrink-0">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="h-[calc(100vh-120px)] w-full bg-gray-50 p-2 sm:p-4 md:p-6 flex flex-col overflow-hidden">
+      <Card className="p-3 sm:p-4 bg-white mb-4 sm:mb-6 flex-shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
           <div className="flex items-center gap-2">
             <Calendar className="w-5 h-5 text-gray-500" />
-            <h2 className="text-lg font-semibold">
+            <h2 className="text-base sm:text-lg font-semibold truncate">
               {itineraryDays.length > 0 && itineraryDays[selectedDay]
                 ? itineraryDays[selectedDay].date
                 : selectedDate.toLocaleDateString("en-US", {
@@ -573,7 +573,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                   })}
             </h2>
           </div>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 sm:gap-3">
             {itineraryDays.length > 0 && (
               <ScrollArea className="w-full">
                 <div className="flex gap-1 p-1">
@@ -583,7 +583,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                       variant={selectedDay === index ? "default" : "outline"}
                       size="sm"
                       onClick={() => handleDayChange(index)}
-                      className="whitespace-nowrap"
+                      className="whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3"
                     >
                       Day {index + 1}
                     </Button>
@@ -592,8 +592,12 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
               </ScrollArea>
             )}
             <div className="flex-shrink-0">
-              <Button variant="outline" size="sm">
-                <Filter className="w-4 h-4 mr-2" />
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs sm:text-sm"
+              >
+                <Filter className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                 Filters
               </Button>
             </div>
@@ -606,13 +610,19 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
         onValueChange={setActiveTab}
         className="w-full flex-1 flex flex-col overflow-hidden"
       >
-        <TabsList className="flex-shrink-0 mb-4 p-1 self-start">
-          <TabsTrigger value="schedule" className="flex items-center gap-2">
-            <List className="h-4 w-4" />
+        <TabsList className="flex-shrink-0 mb-2 sm:mb-4 p-1 self-start">
+          <TabsTrigger
+            value="schedule"
+            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+          >
+            <List className="h-3 w-3 sm:h-4 sm:w-4" />
             Schedule
           </TabsTrigger>
-          <TabsTrigger value="map" className="flex items-center gap-2">
-            <Map className="h-4 w-4" />
+          <TabsTrigger
+            value="map"
+            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+          >
+            <Map className="h-3 w-3 sm:h-4 sm:w-4" />
             Map
           </TabsTrigger>
         </TabsList>

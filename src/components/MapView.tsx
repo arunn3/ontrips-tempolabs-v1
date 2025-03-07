@@ -506,12 +506,12 @@ const MapView: React.FC<MapViewProps> = ({
   };
 
   return (
-    <Card className="w-full h-full bg-white p-4 relative">
+    <Card className="w-full h-full bg-white p-2 sm:p-4 relative">
       {/* Map Container */}
       <div ref={mapRef} className="w-full h-full rounded-lg relative" />
 
       {/* Map Controls */}
-      <div className="absolute right-4 top-4 flex flex-col gap-2 z-[1000]">
+      <div className="absolute right-2 sm:right-4 top-2 sm:top-4 flex flex-col gap-1 sm:gap-2 z-[1000]">
         <MapProviderToggle
           currentProvider={currentProvider}
           onProviderChange={handleProviderChange}
@@ -520,8 +520,13 @@ const MapView: React.FC<MapViewProps> = ({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="secondary" size="icon" onClick={handleZoomIn}>
-                <ZoomIn className="h-4 w-4" />
+              <Button
+                variant="secondary"
+                size="icon"
+                className="h-7 w-7 sm:h-8 sm:w-8"
+                onClick={handleZoomIn}
+              >
+                <ZoomIn className="h-3 w-3 sm:h-4 sm:w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -533,8 +538,13 @@ const MapView: React.FC<MapViewProps> = ({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="secondary" size="icon" onClick={handleZoomOut}>
-                <ZoomOut className="h-4 w-4" />
+              <Button
+                variant="secondary"
+                size="icon"
+                className="h-7 w-7 sm:h-8 sm:w-8"
+                onClick={handleZoomOut}
+              >
+                <ZoomOut className="h-3 w-3 sm:h-4 sm:w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -549,6 +559,7 @@ const MapView: React.FC<MapViewProps> = ({
               <Button
                 variant="secondary"
                 size="icon"
+                className="h-7 w-7 sm:h-8 sm:w-8"
                 onClick={() => {
                   if (!mapInstanceRef.current || locations.length === 0) return;
 
@@ -578,7 +589,7 @@ const MapView: React.FC<MapViewProps> = ({
                   }
                 }}
               >
-                <Navigation className="h-4 w-4" />
+                <Navigation className="h-3 w-3 sm:h-4 sm:w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -589,18 +600,20 @@ const MapView: React.FC<MapViewProps> = ({
       </div>
 
       {/* Location List */}
-      <Card className="absolute left-4 top-4 w-64 p-4 z-[1000]">
-        <h3 className="font-semibold mb-2">Points of Interest</h3>
-        <div className="space-y-2">
+      <Card className="absolute left-2 sm:left-4 top-2 sm:top-4 w-36 sm:w-64 p-2 sm:p-4 z-[1000] max-h-[50%] overflow-auto">
+        <h3 className="font-semibold text-xs sm:text-sm mb-1 sm:mb-2">
+          Points of Interest
+        </h3>
+        <div className="space-y-1 sm:space-y-2">
           {locations.map((location) => (
             <Button
               key={location.id}
               variant={selectedLocation === location.id ? "default" : "ghost"}
-              className="w-full justify-start"
+              className="w-full justify-start text-xs sm:text-sm h-auto py-1 px-2"
               onClick={() => onLocationSelect(location.id)}
             >
-              <MapPin className="h-4 w-4 mr-2" />
-              {location.name}
+              <MapPin className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 flex-shrink-0" />
+              <span className="truncate">{location.name}</span>
             </Button>
           ))}
         </div>
