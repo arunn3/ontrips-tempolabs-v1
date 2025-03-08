@@ -3,6 +3,7 @@ import { Card } from "./ui/card";
 import { ScrollArea } from "./ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Bot, Calendar, Edit2, MapPin, Users, Heart } from "lucide-react";
+import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Checkbox } from "./ui/checkbox";
@@ -33,6 +34,14 @@ interface ChatInterfaceProps {
 }
 
 const preferenceOptions: PreferenceOption[] = [
+  {
+    category: "destinationType",
+    question: "Do you have a specific destination in mind?",
+    options: [
+      "I have a specific country in mind",
+      "Help me discover destinations",
+    ],
+  },
   {
     category: "travelMonth",
     question: "When are you planning to travel?",
@@ -77,6 +86,55 @@ const PreferenceSelector = ({
   onSelect: (option: string) => void;
   category: string;
 }) => {
+  // Special handling for specific country input
+  if (category === "specificCountry") {
+    return (
+      <div className="flex flex-col gap-4 mt-2">
+        <div className="space-y-2">
+          <Input
+            placeholder="Enter country name (e.g., Japan, Italy, etc.)"
+            value={selected[0] || ""}
+            onChange={(e) => onSelect(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        <Button
+          variant="outline"
+          className="w-full justify-center"
+          onClick={() => onSelect("confirm")}
+          disabled={!selected[0] || selected[0].trim() === ""}
+        >
+          Confirm Country
+        </Button>
+      </div>
+    );
+  }
+
+  // Special handling for destinationType category
+  if (category === "destinationType") {
+    return (
+      <div className="flex flex-col gap-4 mt-2">
+        {options.map((option) => (
+          <Button
+            key={option}
+            variant={selected.includes(option) ? "default" : "outline"}
+            className="w-full justify-start px-4 py-6 text-left"
+            onClick={() => onSelect(option)}
+          >
+            <div className="flex flex-col items-start">
+              <span className="font-medium">{option}</span>
+              <span className="text-xs text-muted-foreground mt-1">
+                {option === "I have a specific country in mind"
+                  ? "Enter the name of the country you want to visit"
+                  : "Let me suggest destinations based on your preferences"}
+              </span>
+            </div>
+          </Button>
+        ))}
+      </div>
+    );
+  }
+
   // Special handling for tripPreferences category
   if (category === "tripPreferences") {
     return (
@@ -536,8 +594,88 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [selectedDestination?.title, selections]);
 
   const handleOptionSelect = async (option: string) => {
+    // Special handling for specific country input when currentQuestionIndex is -1
+    if (currentQuestionIndex === -1) {
+      if (option === "confirm" && selections.specificCountry?.[0]) {
+        const countryName = selections.specificCountry[0];
+
+        // Add user's country selection as a message
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            type: "user",
+            content: countryName,
+            timestamp: new Date(),
+          },
+        ]);
+
+        // Move to the next regular question (travelMonth)
+        setCurrentQuestionIndex(1);
+
+        // Add next question as a message
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            type: "bot",
+            content: preferenceOptions[1].question,
+            timestamp: new Date(),
+          },
+        ]);
+
+        return;
+      } else {
+        // Update the specific country selection
+        setSelections({
+          ...selections,
+          specificCountry: [option],
+        });
+        return;
+      }
+    }
+
     const currentCategory = preferenceOptions[currentQuestionIndex].category;
     const currentSelections = selections[currentCategory] || [];
+
+    // Special handling for destinationType category
+    if (currentCategory === "destinationType") {
+      // Clear any previous selections in this category
+      const updatedSelections = [option];
+
+      setSelections({
+        ...selections,
+        [currentCategory]: updatedSelections,
+      });
+
+      // If user chose specific country, add a new question for country input
+      if (option === "I have a specific country in mind") {
+        // Add a new question for specific country input
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            type: "user",
+            content: option,
+            timestamp: new Date(),
+          },
+          {
+            id: (Date.now() + 1).toString(),
+            type: "bot",
+            content: "What country would you like to visit?",
+            timestamp: new Date(),
+          },
+        ]);
+
+        // Add a temporary category for specific country input
+        setCurrentQuestionIndex(-1); // Special index to handle country input
+        return;
+      }
+
+      return;
+    }
+
+    // Special handling for specific country input is now at the top of the function
 
     // Special handling for tripPreferences category
     if (currentCategory === "tripPreferences") {
@@ -728,6 +866,47 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   const handleNext = async () => {
+    // Special handling for specific country input
+    if (currentQuestionIndex === -1) {
+      if (selections.specificCountry?.[0]) {
+        const countryName = selections.specificCountry[0];
+
+        // Add user's country selection as a message
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            type: "user",
+            content: countryName,
+            timestamp: new Date(),
+          },
+        ]);
+
+        // Move to the next regular question (travelMonth)
+        setCurrentQuestionIndex(1);
+
+        // Add next question as a message
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            type: "bot",
+            content: preferenceOptions[1].question,
+            timestamp: new Date(),
+          },
+        ]);
+
+        return;
+      } else {
+        toast({
+          title: "Country required",
+          description: "Please enter a country name",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     const currentCategory = preferenceOptions[currentQuestionIndex].category;
     const currentSelections = selections[currentCategory] || [];
 
@@ -795,8 +974,53 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           // Import the searchService
           const { searchDestinations } = await import("../lib/searchService");
 
-          // This will check the search_criteria table first, then fall back to Gemini API if needed
-          fetchedDestinations = await searchDestinations(selections);
+          // Check if user specified a country directly
+          if (
+            selections.destinationType?.[0] ===
+              "I have a specific country in mind" &&
+            selections.specificCountry?.[0]
+          ) {
+            // Create a destination directly from the specified country
+            const countryName = selections.specificCountry[0];
+
+            // Create a single destination for the specified country
+            fetchedDestinations = [
+              {
+                title: countryName,
+                description: `Explore the beauty and culture of ${countryName}. This destination was selected based on your specific request.`,
+                image: `https://source.unsplash.com/featured/?${encodeURIComponent(countryName)},travel`,
+                matchPercentage: 100,
+                rating: 4.8,
+                priceRange: "Varies by region",
+              },
+            ];
+
+            // Skip the rest of the function and directly show this destination
+            setDestinations(fetchedDestinations);
+
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: Date.now().toString(),
+                type: "bot",
+                content: (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium">Your Selected Destination</h3>
+                    </div>
+                    {/* Destinations will be rendered conditionally below based on selectedDestination state */}
+                  </div>
+                ),
+                timestamp: new Date(),
+              },
+            ]);
+
+            setIsSearching(false);
+            return;
+          } else {
+            // This will check the search_criteria table first, then fall back to Gemini API if needed
+            fetchedDestinations = await searchDestinations(selections);
+          }
 
           console.log("Fetched destinations:", fetchedDestinations);
         } catch (searchError) {
@@ -872,12 +1096,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             variant="ghost"
             size="icon"
             onClick={() => {
-              // Reset the chat but keep the current selections and destination
+              // Reset the chat and clear all selections and destination
               setCurrentQuestionIndex(0);
               // Clear the selected destination and itinerary
               setSelectedDestination(null);
+              setSelections({});
               localStorage.removeItem("selectedDestination");
               localStorage.removeItem("generatedItinerary");
+              localStorage.removeItem("selectedPreferences");
 
               // Dispatch event to clear the schedule view
               const itineraryUpdatedEvent = new CustomEvent(
@@ -945,19 +1171,58 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 Selected Preferences:
               </h4>
               <div className="flex gap-2 flex-wrap">
-                {Object.entries(selections).flatMap(([category, values]) =>
-                  category !== "tripPreferences" && category !== "customizing"
-                    ? values.map((value) => (
-                        <Badge
-                          key={`${category}-${value}`}
-                          variant="secondary"
-                          className="text-xs"
-                        >
-                          {value}
-                        </Badge>
-                      ))
-                    : [],
-                )}
+                {Object.entries(selections).flatMap(([category, values]) => {
+                  // Skip certain categories
+                  if (
+                    category === "tripPreferences" ||
+                    category === "customizing" ||
+                    category === "specificCountry"
+                  ) {
+                    return [];
+                  }
+
+                  // Skip showing "I have a specific country in mind" if we have a specific country
+                  if (
+                    category === "destinationType" &&
+                    values.includes("I have a specific country in mind")
+                  ) {
+                    return [];
+                  }
+
+                  // Only show specific country if destinationType is "I have a specific country in mind"
+                  if (
+                    category === "specificCountry" &&
+                    !selections.destinationType?.includes(
+                      "I have a specific country in mind",
+                    )
+                  ) {
+                    return [];
+                  }
+
+                  return values.map((value) => (
+                    <Badge
+                      key={`${category}-${value}`}
+                      variant="secondary"
+                      className="text-xs"
+                    >
+                      {value}
+                    </Badge>
+                  ));
+                })}
+
+                {/* Show the specific country if entered and destinationType is appropriate */}
+                {selections.specificCountry?.[0] &&
+                  selections.destinationType?.includes(
+                    "I have a specific country in mind",
+                  ) && (
+                    <Badge
+                      key="specific-country"
+                      variant="secondary"
+                      className="text-xs"
+                    >
+                      {selections.specificCountry[0]}
+                    </Badge>
+                  )}
               </div>
             </div>
           )}
@@ -1054,24 +1319,36 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </Avatar>
               <div className="rounded-lg p-3 max-w-[80%] bg-muted">
                 <p className="text-sm whitespace-pre-wrap">
-                  {currentQuestionIndex < preferenceOptions.length
-                    ? preferenceOptions[currentQuestionIndex].question
-                    : "Thanks! Let me find the perfect destinations based on your preferences..."}
+                  {currentQuestionIndex === -1
+                    ? "What country would you like to visit?"
+                    : currentQuestionIndex < preferenceOptions.length
+                      ? preferenceOptions[currentQuestionIndex].question
+                      : "Thanks! Let me find the perfect destinations based on your preferences..."}
                 </p>
               </div>
             </div>
-            {currentQuestionIndex < preferenceOptions.length && (
+            {(currentQuestionIndex < preferenceOptions.length ||
+              currentQuestionIndex === -1) && (
               <div className="mt-4">
-                <PreferenceSelector
-                  options={preferenceOptions[currentQuestionIndex].options}
-                  selected={
-                    selections[
-                      preferenceOptions[currentQuestionIndex].category
-                    ] || []
-                  }
-                  onSelect={handleOptionSelect}
-                  category={preferenceOptions[currentQuestionIndex].category}
-                />
+                {currentQuestionIndex === -1 ? (
+                  <PreferenceSelector
+                    options={[]}
+                    selected={selections.specificCountry || []}
+                    onSelect={handleOptionSelect}
+                    category="specificCountry"
+                  />
+                ) : (
+                  <PreferenceSelector
+                    options={preferenceOptions[currentQuestionIndex].options}
+                    selected={
+                      selections[
+                        preferenceOptions[currentQuestionIndex].category
+                      ] || []
+                    }
+                    onSelect={handleOptionSelect}
+                    category={preferenceOptions[currentQuestionIndex].category}
+                  />
+                )}
                 <div className="flex gap-2 mt-4">
                   {currentQuestionIndex > 0 && (
                     <Button
@@ -1099,11 +1376,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     onClick={handleNext}
                     disabled={
                       isLoading ||
-                      !(
-                        selections[
-                          preferenceOptions[currentQuestionIndex].category
-                        ]?.length > 0
-                      )
+                      (currentQuestionIndex !== -1 &&
+                        !(
+                          selections[
+                            preferenceOptions[currentQuestionIndex]?.category
+                          ]?.length > 0
+                        ))
                     }
                   >
                     {currentQuestionIndex === preferenceOptions.length - 1
@@ -1160,9 +1438,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         open={showDatePickerDialog}
         onOpenChange={setShowDatePickerDialog}
         onDateSelect={(date) => {
-          // Find the currently selected destination
           // Make sure we're using the correct destination that was clicked on
-          const selectedDest = selectedDestination || destinations[0];
+          // Always use the explicitly selected destination, not the first one in the list
+          const selectedDest = selectedDestination;
           if (selectedDest) {
             // Call the generate itinerary function with the selected date
             const generateFn = async () => {
@@ -1359,7 +1637,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 setSelectedDestination(updatedDestination);
 
                 // Clear destinations array since we now have an itinerary
-                setDestinations([]);
+                // This prevents other destinations from being displayed
+                setDestinations([updatedDestination]);
 
                 // Store the selected destination and preferences in localStorage for persistence
                 localStorage.setItem(
