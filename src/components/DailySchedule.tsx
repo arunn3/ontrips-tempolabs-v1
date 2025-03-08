@@ -167,7 +167,12 @@ const DailySchedule = ({
   onReorder = () => {},
   onDelete = () => {},
   onAdd = () => {},
-}: DailyScheduleProps) => {
+  isGenerating = false,
+  generationProgress = 0,
+}: DailyScheduleProps & {
+  isGenerating?: boolean;
+  generationProgress?: number;
+}) => {
   const [items, setItems] = React.useState(activities);
   const [expandedItems, setExpandedItems] = React.useState<
     Record<string, boolean>
@@ -428,7 +433,7 @@ const DailySchedule = ({
   };
 
   return (
-    <Card className="w-full h-full bg-white p-3 sm:p-4 md:p-6 flex flex-col">
+    <Card className="w-full h-full bg-white p-3 sm:p-4 md:p-6 flex flex-col relative">
       <div className="flex justify-between items-center mb-3 sm:mb-6 flex-shrink-0">
         <h2 className="text-lg sm:text-xl md:text-2xl font-semibold">
           Daily Schedule
@@ -767,6 +772,45 @@ const DailySchedule = ({
           setClickedButtonIndex(null);
         }}
       />
+
+      {/* Generation Progress Overlay */}
+      {isGenerating && (
+        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
+          <div className="relative w-24 h-24 mb-4">
+            <div className="absolute inset-0 rounded-full border-4 border-primary/20"></div>
+            <svg
+              className="absolute inset-0 w-full h-full"
+              viewBox="0 0 100 100"
+            >
+              <circle
+                className="text-primary"
+                strokeWidth="4"
+                stroke="currentColor"
+                fill="transparent"
+                r="48"
+                cx="50"
+                cy="50"
+                strokeLinecap="round"
+                style={{
+                  strokeDasharray: 301.59,
+                  strokeDashoffset:
+                    301.59 - (301.59 * generationProgress) / 100,
+                  transformOrigin: "center",
+                  transform: "rotate(-90deg)",
+                }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center text-xl font-semibold text-primary">
+              {Math.round(generationProgress)}%
+            </div>
+          </div>
+          <h3 className="text-lg font-medium mb-2">Generating Itinerary</h3>
+          <p className="text-sm text-muted-foreground max-w-xs text-center">
+            Creating your perfect travel schedule with activities tailored to
+            your preferences...
+          </p>
+        </div>
+      )}
     </Card>
   );
 };

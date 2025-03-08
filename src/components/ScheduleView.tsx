@@ -67,12 +67,25 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   onDateChange = () => {},
 }) => {
   // Check if there's an itinerary in localStorage
+  const {
+    itinerary,
+    isGenerating: contextIsGenerating,
+    generationProgress: contextGenerationProgress,
+  } = useItinerary();
   const [selectedDay, setSelectedDay] = React.useState(0);
   const [itineraryDays, setItineraryDays] = React.useState<any[]>([]);
   const [activeTab, setActiveTab] = React.useState("schedule");
-  const [isGeneratingItinerary, setIsGeneratingItinerary] =
-    React.useState(false);
-  const [generationProgress, setGenerationProgress] = React.useState(0);
+
+  // Use values from context with local state as fallback
+  const [localIsGenerating, setLocalIsGenerating] = React.useState(false);
+  const [localGenerationProgress, setLocalGenerationProgress] =
+    React.useState(0);
+
+  // Combine context values with local state
+  const isGeneratingItinerary = contextIsGenerating || localIsGenerating;
+  const generationProgress = contextIsGenerating
+    ? contextGenerationProgress
+    : localGenerationProgress;
 
   React.useEffect(() => {
     // Define the event handler function
@@ -88,12 +101,12 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
         setActivitiesList([]);
         setItineraryDays([]);
         setActiveTab("schedule"); // Force switch to schedule tab to show progress
-        setIsGeneratingItinerary(true);
-        setGenerationProgress(event.detail.progress || 0);
+        setLocalIsGenerating(true);
+        setLocalGenerationProgress(event.detail.progress || 0);
       } else if (event.detail.status === "complete") {
         // Itinerary generation complete
-        setIsGeneratingItinerary(false);
-        setGenerationProgress(100);
+        setLocalIsGenerating(false);
+        setLocalGenerationProgress(100);
         setActiveTab("schedule"); // Ensure we're on the schedule tab
 
         // If the event contains an itinerary directly, use it
@@ -220,7 +233,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
         }
       } else if (event.detail.status === "error") {
         // Error in itinerary generation
-        setIsGeneratingItinerary(false);
+        setLocalIsGenerating(false);
       } else if (event.detail.status === "clear") {
         // Clear the itinerary
         setActivitiesList([]);
@@ -628,42 +641,20 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
         </TabsList>
 
         <TabsContent value="schedule" className="flex-1 h-full overflow-hidden">
-          {isGeneratingItinerary ? (
-            <div className="flex flex-col items-center justify-center h-full p-8 space-y-4">
-              <div className="text-center space-y-2">
-                <h3 className="text-lg font-medium">
-                  Generating your itinerary...
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  This may take a minute or two
-                </p>
-              </div>
-              <div className="w-full max-w-md">
-                <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all duration-500 ease-in-out"
-                    style={{ width: `${generationProgress}%` }}
-                  ></div>
-                </div>
-                <p className="text-xs text-center mt-2 text-muted-foreground">
-                  {generationProgress}% complete
-                </p>
-              </div>
-            </div>
-          ) : (
-            <DailySchedule
-              activities={activitiesList}
-              onReorder={(newActivities) => {
-                console.log("Reordered:", newActivities);
-                setActivitiesList(newActivities);
-              }}
-              onDelete={(id) => {
-                console.log("Delete:", id);
-                setActivitiesList(activitiesList.filter((a) => a.id !== id));
-              }}
-              onAdd={() => console.log("Add new activity")}
-            />
-          )}
+          <DailySchedule
+            activities={activitiesList}
+            onReorder={(newActivities) => {
+              console.log("Reordered:", newActivities);
+              setActivitiesList(newActivities);
+            }}
+            onDelete={(id) => {
+              console.log("Delete:", id);
+              setActivitiesList(activitiesList.filter((a) => a.id !== id));
+            }}
+            onAdd={() => console.log("Add new activity")}
+            isGenerating={isGeneratingItinerary}
+            generationProgress={generationProgress}
+          />
         </TabsContent>
 
         <TabsContent value="map" className="flex-1 h-full overflow-hidden">

@@ -401,7 +401,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onSendMessage = () => {},
   isLoading = false,
 }: ChatInterfaceProps) => {
-  const { setItinerary } = useItinerary();
+  const { setItinerary, setIsGenerating, setGenerationProgress } =
+    useItinerary();
   const [showDatePickerDialog, setShowDatePickerDialog] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selections, setSelections] = useState<Record<string, string[]>>({});
@@ -412,7 +413,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [isGeneratingItinerary, setIsGeneratingItinerary] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState(0);
+  const [localGenerationProgress, setLocalGenerationProgress] = useState(0);
   const [showPublicPrivateDialog, setShowPublicPrivateDialog] = useState(false);
   const [pendingSaveData, setPendingSaveData] = useState<{
     userId: string;
@@ -1167,7 +1168,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             const generateFn = async () => {
               try {
                 setIsGeneratingItinerary(true);
-                setGenerationProgress(0);
+                setLocalGenerationProgress(0);
 
                 // Dispatch event to clear the schedule view and show progress
                 const startEvent = new CustomEvent("itineraryUpdated", {
@@ -1175,18 +1176,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 });
                 window.dispatchEvent(startEvent);
 
-                // Update progress periodically
+                // Set the context state
+                setIsGenerating(true);
+                setGenerationProgress(0);
+
+                // Update progress periodically with consistent forward progress
                 const progressInterval = setInterval(() => {
-                  const progress = Math.min(
-                    95,
-                    generationProgress + Math.floor(Math.random() * 10) + 5,
-                  );
-                  setGenerationProgress(progress);
-                  window.dispatchEvent(
-                    new CustomEvent("itineraryUpdated", {
-                      detail: { status: "generating", progress },
-                    }),
-                  );
+                  setLocalGenerationProgress((prev) => {
+                    // Ensure progress always increases by 5-15%
+                    const increment = 5 + Math.floor(Math.random() * 10);
+                    const newProgress = Math.min(95, prev + increment);
+
+                    // Update both the context state and dispatch the event
+                    setGenerationProgress(newProgress);
+                    window.dispatchEvent(
+                      new CustomEvent("itineraryUpdated", {
+                        detail: { status: "generating", progress: newProgress },
+                      }),
+                    );
+
+                    return newProgress;
+                  });
                 }, 2000);
 
                 // First check if there's a matching public itinerary in the database
@@ -1366,8 +1376,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 // Clear the progress interval
                 clearInterval(progressInterval);
 
-                // Update the itinerary in the context
+                // Update the itinerary in the context and reset generation state
                 setItinerary(itinerary);
+                setIsGenerating(false);
+                setGenerationProgress(100);
+
+                // Dispatch event to notify ScheduleView that generation is complete
+                const completeEvent = new CustomEvent("itineraryUpdated", {
+                  detail: { status: "complete", itinerary },
+                });
+                window.dispatchEvent(completeEvent);
 
                 // Set a flag in localStorage to trigger a reload in ScheduleView
                 localStorage.setItem("itineraryUpdate", Date.now().toString());
