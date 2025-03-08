@@ -141,7 +141,11 @@ const UserProfile: React.FC<UserProfileProps> = ({ onSignOut = () => {} }) => {
         </div>
 
         <div className="w-full pt-4 flex flex-col gap-2">
-          <Button variant="outline" className="w-full justify-start">
+          <Button
+            variant="outline"
+            className="w-full justify-start"
+            onClick={() => (window.location.href = "/settings")}
+          >
             <Settings className="mr-2 h-4 w-4" />
             Account Settings
           </Button>

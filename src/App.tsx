@@ -15,6 +15,9 @@ const DestinationDetails = lazy(
 const OnboardingFlow = lazy(
   () => import("./components/onboarding/OnboardingFlow"),
 );
+const AccountSettings = lazy(
+  () => import("./components/settings/AccountSettings"),
+);
 
 function App() {
   return (
@@ -39,6 +42,16 @@ function App() {
         />
         <Route path="/planner" element={<Home />} />
         <Route path="/onboarding" element={<OnboardingFlow />} />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <MagazineLayout>
+                <AccountSettings />
+              </MagazineLayout>
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
       {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
