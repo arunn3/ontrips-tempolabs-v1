@@ -788,67 +788,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       try {
         setIsSearching(true);
 
-        // First check if we have destinations in the database matching the preferences
+        // Use the searchService to find destinations
         let fetchedDestinations = [];
         try {
-          const { data: userData } = await supabase.auth.getUser();
-          if (userData.user) {
-            // Convert selections to a string for easier comparison
-            const preferencesString = JSON.stringify(selections);
+          // Import the searchService
+          const { searchDestinations } = await import("../lib/searchService");
 
-            // Query for destinations with matching preferences
-            const { data: dbDestinations } = await supabase
-              .from("destinations")
-              .select("*")
-              .limit(5);
-
-            if (dbDestinations && dbDestinations.length > 0) {
-              console.log("Found destinations in database:", dbDestinations);
-              // Convert database destinations to the format expected by the UI
-              fetchedDestinations = dbDestinations.map((dest) => ({
-                title: dest.title,
-                description: dest.description,
-                image: dest.image,
-                matchPercentage: dest.match_percentage,
-                rating: dest.rating,
-                priceRange: dest.price_range,
-              }));
-            }
-          }
-        } catch (dbError) {
-          console.error(
-            "Error checking for destinations in database:",
-            dbError,
-          );
-        }
-
-        // If no destinations found in database, use Gemini API
-        if (fetchedDestinations.length === 0) {
-          const { searchDestinations } = await import("../lib/gemini");
+          // This will check the search_criteria table first, then fall back to Gemini API if needed
           fetchedDestinations = await searchDestinations(selections);
 
-          // Save the destinations to the database for future use
-          try {
-            const { data: userData } = await supabase.auth.getUser();
-            if (userData.user) {
-              // Save each destination with the preferences
-              for (const destination of fetchedDestinations) {
-                await supabase.from("destinations").insert({
-                  user_id: userData.user.id,
-                  title: destination.title,
-                  description: destination.description,
-                  image: destination.image,
-                  match_percentage: destination.matchPercentage,
-                  rating: destination.rating,
-                  price_range: destination.priceRange,
-                  preferences: selections,
-                  created_at: new Date().toISOString(),
-                });
-              }
-            }
-          } catch (saveError) {
-            console.error("Error saving destinations to database:", saveError);
-          }
+          console.log("Fetched destinations:", fetchedDestinations);
+        } catch (searchError) {
+          console.error("Error searching for destinations:", searchError);
         }
 
         setDestinations(fetchedDestinations); // Store destinations in state

@@ -15,11 +15,23 @@ const basename = import.meta.env.BASE_URL;
 
 // We'll handle profile creation during the auth flow
 import { createProfilesTable } from "./lib/createProfilesTable";
-createProfilesTable().then((success) => {
-  console.log(
-    success ? "Profiles table check complete" : "Profiles table check failed",
-  );
-});
+import { createSearchCriteriaTable } from "./lib/createSearchCriteriaTable";
+
+// Initialize database tables
+Promise.all([createProfilesTable(), createSearchCriteriaTable()]).then(
+  ([profilesSuccess, searchCriteriaSuccess]) => {
+    console.log(
+      profilesSuccess
+        ? "Profiles table check complete"
+        : "Profiles table check failed",
+    );
+    console.log(
+      searchCriteriaSuccess
+        ? "Search criteria table check complete"
+        : "Search criteria table check failed",
+    );
+  },
+);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
