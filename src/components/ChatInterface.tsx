@@ -10,6 +10,7 @@ import { useToast } from "./ui/use-toast";
 import { supabase } from "@/lib/supabase";
 import DatePickerDialog from "./DatePickerDialog";
 import PublicPrivateDialog from "./PublicPrivateDialog";
+import PreferencesModal from "./PreferencesModal";
 import { useItinerary } from "@/context/ItineraryContext";
 
 interface Message {
@@ -51,39 +52,12 @@ const preferenceOptions: PreferenceOption[] = [
     ],
   },
   {
-    category: "travelType",
-    question: "What type of travel are you interested in?",
+    category: "tripPreferences",
+    question: "Trip Preferences",
     options: [
-      "Family with kids",
-      "Solo",
-      "Couples",
-      "Honeymoon",
-      "Business",
-      "With pets",
+      "Use my profile preferences",
+      "Customize preferences for this trip",
     ],
-  },
-  {
-    category: "travelStyle",
-    question: "What's your preferred travel style?",
-    options: ["Budget", "Luxury", "Adventure", "Relaxed", "Fast-paced"],
-  },
-  {
-    category: "interests",
-    question: "What are your main interests?",
-    options: [
-      "Beaches",
-      "History",
-      "Food",
-      "Art",
-      "Nature",
-      "Nightlife",
-      "Shopping",
-    ],
-  },
-  {
-    category: "budget",
-    question: "What's your budget range?",
-    options: ["Budget", "Mid-range", "Luxury", "Ultra-luxury"],
   },
   {
     category: "duration",
@@ -96,11 +70,39 @@ const PreferenceSelector = ({
   options,
   selected,
   onSelect,
+  category,
 }: {
   options: string[];
   selected: string[];
   onSelect: (option: string) => void;
+  category: string;
 }) => {
+  // Special handling for tripPreferences category
+  if (category === "tripPreferences") {
+    return (
+      <div className="flex flex-col gap-4 mt-2">
+        {options.map((option) => (
+          <Button
+            key={option}
+            variant={selected.includes(option) ? "default" : "outline"}
+            className="w-full justify-start px-4 py-6 text-left"
+            onClick={() => onSelect(option)}
+          >
+            <div className="flex flex-col items-start">
+              <span className="font-medium">{option}</span>
+              <span className="text-xs text-muted-foreground mt-1">
+                {option === "Use my profile preferences"
+                  ? "Use your saved travel interests and styles from your profile"
+                  : "Select custom preferences just for this trip"}
+              </span>
+            </div>
+          </Button>
+        ))}
+      </div>
+    );
+  }
+
+  // Default rendering for other categories
   return (
     <div className="grid grid-cols-2 gap-2 mt-2">
       {options.map((option) => (
@@ -172,6 +174,7 @@ interface DestinationDetailsType {
   weather: Weather;
   transportation: Transportation;
   accommodation: Accommodation;
+  cities: any[];
 }
 
 interface Destination {
@@ -183,6 +186,10 @@ interface Destination {
   priceRange: string;
   details?: DestinationDetailsType;
   itinerary?: GeneratedItinerary;
+}
+
+interface GeneratedItinerary {
+  days: any[];
 }
 
 const DestinationCardComponent = ({
@@ -413,6 +420,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     selections: Record<string, string[]>;
     itinerary: any;
   } | null>(null);
+  const [showPreferencesModal, setShowPreferencesModal] = useState(false);
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -526,10 +534,188 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     fetchDetails();
   }, [selectedDestination?.title, selections]);
 
-  const handleOptionSelect = (option: string) => {
+  const handleOptionSelect = async (option: string) => {
     const currentCategory = preferenceOptions[currentQuestionIndex].category;
     const currentSelections = selections[currentCategory] || [];
 
+    // Special handling for tripPreferences category
+    if (currentCategory === "tripPreferences") {
+      // Clear any previous selections in this category
+      const updatedSelections = [option];
+
+      setSelections({
+        ...selections,
+        [currentCategory]: updatedSelections,
+      });
+
+      // If user chose to use profile preferences, load them
+      if (option === "Use my profile preferences") {
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData.user) {
+            const { data: profileData, error } = await supabase
+              .from("profiles")
+              .select("travel_interests, travel_styles")
+              .eq("id", userData.user.id)
+              .single();
+
+            if (!error && profileData) {
+              // Convert profile preferences to the format expected by the chat interface
+              const profilePreferences: Record<string, string[]> = {};
+
+              // Add travel types and styles from travel_styles
+              if (profileData.travel_styles) {
+                // Add travel types from Travel Type & Group category
+                if (profileData.travel_styles["Travel Type & Group"]) {
+                  profilePreferences.travelType =
+                    profileData.travel_styles["Travel Type & Group"];
+                }
+
+                // Add travel styles from Pace & Detail Level category
+                if (profileData.travel_styles["Pace & Detail Level"]) {
+                  profilePreferences.travelStyle =
+                    profileData.travel_styles["Pace & Detail Level"];
+                }
+
+                // Add budget preferences from Budget category
+                if (profileData.travel_styles["Budget"]) {
+                  profilePreferences.budget =
+                    profileData.travel_styles["Budget"];
+                }
+
+                // Add accommodation preferences
+                if (profileData.travel_styles["Accommodation Style"]) {
+                  profilePreferences.accommodation =
+                    profileData.travel_styles["Accommodation Style"];
+                }
+
+                // Add transportation preferences
+                if (profileData.travel_styles["Transportation Preference"]) {
+                  profilePreferences.transportation =
+                    profileData.travel_styles["Transportation Preference"];
+                }
+              }
+
+              // Add interests from travel_interests
+              if (profileData.travel_interests) {
+                const allInterests: string[] = [];
+                Object.values(profileData.travel_interests).forEach(
+                  (categoryInterests) => {
+                    if (Array.isArray(categoryInterests)) {
+                      allInterests.push(...categoryInterests.slice(0, 5)); // Limit to 5 interests per category
+                    }
+                  },
+                );
+                profilePreferences.interests = allInterests.slice(0, 10); // Limit to 10 total interests
+              }
+
+              // Merge with current selections
+              setSelections((prev) => ({
+                ...prev,
+                ...profilePreferences,
+              }));
+
+              toast({
+                title: "Profile preferences loaded",
+                description:
+                  "Your saved preferences have been applied to this trip.",
+              });
+            } else {
+              toast({
+                title: "No preferences found",
+                description:
+                  "We couldn't find any saved preferences in your profile.",
+                variant: "destructive",
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Error loading profile preferences:", error);
+          toast({
+            title: "Error",
+            description: "Failed to load your profile preferences.",
+            variant: "destructive",
+          });
+        }
+      } else if (option === "Customize preferences for this trip") {
+        // Show the preferences modal with pre-filled preferences from profile if available
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData.user) {
+            const { data: profileData, error } = await supabase
+              .from("profiles")
+              .select("travel_interests, travel_styles")
+              .eq("id", userData.user.id)
+              .single();
+
+            if (!error && profileData) {
+              // Pre-fill with profile preferences
+              const profilePreferences: Record<string, string[]> = {};
+
+              // Add travel types and styles from travel_styles
+              if (profileData.travel_styles) {
+                // Add travel types from Travel Type & Group category
+                if (profileData.travel_styles["Travel Type & Group"]) {
+                  profilePreferences.travelType =
+                    profileData.travel_styles["Travel Type & Group"];
+                }
+
+                // Add travel styles from Pace & Detail Level category
+                if (profileData.travel_styles["Pace & Detail Level"]) {
+                  profilePreferences.travelStyle =
+                    profileData.travel_styles["Pace & Detail Level"];
+                }
+
+                // Add budget preferences from Budget category
+                if (profileData.travel_styles["Budget"]) {
+                  profilePreferences.budget =
+                    profileData.travel_styles["Budget"];
+                }
+
+                // Add accommodation preferences
+                if (profileData.travel_styles["Accommodation Style"]) {
+                  profilePreferences.accommodation =
+                    profileData.travel_styles["Accommodation Style"];
+                }
+
+                // Add transportation preferences
+                if (profileData.travel_styles["Transportation Preference"]) {
+                  profilePreferences.transportation =
+                    profileData.travel_styles["Transportation Preference"];
+                }
+              }
+
+              // Add interests from travel_interests
+              if (profileData.travel_interests) {
+                const allInterests: string[] = [];
+                Object.values(profileData.travel_interests).forEach(
+                  (categoryInterests) => {
+                    if (Array.isArray(categoryInterests)) {
+                      allInterests.push(...categoryInterests);
+                    }
+                  },
+                );
+                profilePreferences.interests = allInterests;
+              }
+
+              // Update selections with profile preferences
+              setSelections((prev) => ({
+                ...prev,
+                ...profilePreferences,
+              }));
+            }
+          }
+        } catch (error) {
+          console.error("Error pre-filling preferences:", error);
+        }
+
+        // Show the preferences modal
+        setShowPreferencesModal(true);
+      }
+      return;
+    }
+
+    // Normal handling for other categories
     const updatedSelections = currentSelections.includes(option)
       ? currentSelections.filter((item) => item !== option)
       : [...currentSelections, option];
@@ -566,6 +752,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         timestamp: new Date(),
       },
     ]);
+
+    // No special handling needed here anymore since we're using a modal
+    // Just proceed with the normal flow
 
     if (currentQuestionIndex < preferenceOptions.length - 1) {
       const nextIndex = currentQuestionIndex + 1;
@@ -727,43 +916,41 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               NEW
             </Badge>
           </h2>
-          {selectedDestination?.itinerary && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                // Reset the chat but keep the current selections and destination
-                setCurrentQuestionIndex(0);
-                // Clear the selected destination and itinerary
-                setSelectedDestination(null);
-                localStorage.removeItem("selectedDestination");
-                localStorage.removeItem("generatedItinerary");
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              // Reset the chat but keep the current selections and destination
+              setCurrentQuestionIndex(0);
+              // Clear the selected destination and itinerary
+              setSelectedDestination(null);
+              localStorage.removeItem("selectedDestination");
+              localStorage.removeItem("generatedItinerary");
 
-                // Dispatch event to clear the schedule view
-                const itineraryUpdatedEvent = new CustomEvent(
-                  "itineraryUpdated",
-                  {
-                    detail: { itinerary: null, status: "clear" },
-                  },
-                );
-                window.dispatchEvent(itineraryUpdatedEvent);
+              // Dispatch event to clear the schedule view
+              const itineraryUpdatedEvent = new CustomEvent(
+                "itineraryUpdated",
+                {
+                  detail: { itinerary: null, status: "clear" },
+                },
+              );
+              window.dispatchEvent(itineraryUpdatedEvent);
 
-                // Reset messages to initial state
-                setMessages([
-                  {
-                    id: "1",
-                    type: "bot",
-                    content:
-                      "Hi! Let's help you discover your perfect destination. I'll ask you a few questions about your preferences.",
-                    timestamp: new Date(),
-                  },
-                ]);
-              }}
-              title="Edit preferences"
-            >
-              <Edit2 className="h-4 w-4" />
-            </Button>
-          )}
+              // Reset messages to initial state
+              setMessages([
+                {
+                  id: "1",
+                  type: "bot",
+                  content:
+                    "Hi! Let's help you discover your perfect destination. I'll ask you a few questions about your preferences.",
+                  timestamp: new Date(),
+                },
+              ]);
+            }}
+            title="Edit preferences"
+          >
+            <Edit2 className="h-4 w-4" />
+          </Button>
         </div>
         {/* Current Trip Details */}
         <div className="space-y-2 bg-muted p-3 rounded-lg">
@@ -807,15 +994,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </h4>
               <div className="flex gap-2 flex-wrap">
                 {Object.entries(selections).flatMap(([category, values]) =>
-                  values.map((value) => (
-                    <Badge
-                      key={`${category}-${value}`}
-                      variant="secondary"
-                      className="text-xs"
-                    >
-                      {value}
-                    </Badge>
-                  )),
+                  category !== "tripPreferences" && category !== "customizing"
+                    ? values.map((value) => (
+                        <Badge
+                          key={`${category}-${value}`}
+                          variant="secondary"
+                          className="text-xs"
+                        >
+                          {value}
+                        </Badge>
+                      ))
+                    : [],
                 )}
               </div>
             </div>
@@ -827,29 +1016,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       <ScrollArea className="flex-1 p-4">
         {showingResults ? (
           <div className="space-y-6">
-            {/* Selected Preferences Summary 
-            <div className="bg-muted rounded-lg p-4">
-              <h3 className="font-medium mb-3">Your Travel Preferences</h3>
-              <div className="space-y-2">
-                {Object.entries(selections).map(([category, values]) => (
-                  <div key={category} className="flex flex-wrap gap-2">
-                    <span className="text-sm font-medium text-muted-foreground capitalize">
-                      {category.replace(/([A-Z])/g, " $1").trim()}:
-                    </span>
-                    {values.map((value) => (
-                      <Badge
-                        key={value}
-                        variant="secondary"
-                        className="text-xs"
-                      >
-                        {value}
-                      </Badge>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>*/}
-
             {/* Destination Results - Display Destinations or DestinationDetails conditionally */}
             <div className="space-y-4">
               {!selectedDestination ? (
@@ -877,290 +1043,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         setShowDatePickerDialog={() => {
                           setSelectedDestination(destination);
                           setShowDatePickerDialog(true);
-                        }}
-                        onGenerateItinerary={async (
-                          startDate: Date = new Date(),
-                        ) => {
-                          try {
-                            setIsGeneratingItinerary(true);
-                            setGenerationProgress(0);
-
-                            // Dispatch event to clear the schedule view and show progress
-                            const startEvent = new CustomEvent(
-                              "itineraryUpdated",
-                              {
-                                detail: { status: "generating", progress: 0 },
-                              },
-                            );
-                            window.dispatchEvent(startEvent);
-
-                            // Update progress periodically
-                            const progressInterval = setInterval(() => {
-                              const progress = Math.min(
-                                95,
-                                generationProgress +
-                                  Math.floor(Math.random() * 10) +
-                                  5,
-                              );
-                              setGenerationProgress(progress);
-                              window.dispatchEvent(
-                                new CustomEvent("itineraryUpdated", {
-                                  detail: { status: "generating", progress },
-                                }),
-                              );
-                            }, 2000);
-
-                            // Store the selected destination before generating itinerary
-                            const currentDestination = destination;
-                            setSelectedDestination(currentDestination);
-                            console.log(
-                              "Current Destination: %s",
-                              currentDestination,
-                            );
-
-                            // First check if there's a matching public itinerary in the database
-                            let itinerary;
-                            try {
-                              const { data: userData } =
-                                await supabase.auth.getUser();
-                              if (userData.user) {
-                                // Check for public itineraries matching the destination and preferences
-                                const { data: matchingItineraries } =
-                                  await supabase
-                                    .from("itineraries")
-                                    .select("*")
-                                    .eq("destination", currentDestination.title)
-                                    .eq("is_public", true)
-                                    .limit(1);
-
-                                if (
-                                  matchingItineraries &&
-                                  matchingItineraries.length > 0
-                                ) {
-                                  // Found a matching public itinerary
-                                  console.log(
-                                    "Found matching public itinerary:",
-                                    matchingItineraries[0],
-                                  );
-                                  itinerary =
-                                    matchingItineraries[0].itinerary_data;
-
-                                  // Adjust the dates to match the selected start date
-                                  if (
-                                    itinerary.days &&
-                                    itinerary.days.length > 0
-                                  ) {
-                                    const newDays = [...itinerary.days];
-                                    const startDateObj = new Date(startDate);
-
-                                    for (let i = 0; i < newDays.length; i++) {
-                                      const dayDate = new Date(startDateObj);
-                                      dayDate.setDate(
-                                        startDateObj.getDate() + i,
-                                      );
-                                      newDays[i].date = dayDate
-                                        .toISOString()
-                                        .split("T")[0];
-                                    }
-
-                                    itinerary.days = newDays;
-                                  }
-                                }
-                              }
-                            } catch (dbError) {
-                              console.error(
-                                "Error checking for public itineraries:",
-                                dbError,
-                              );
-                            }
-
-                            // If no matching itinerary was found, generate a new one
-                            if (!itinerary) {
-                              const { generateItinerary } = await import(
-                                "../lib/gemini"
-                              );
-                              const duration = selections.duration?.[0]
-                                ?.toLowerCase()
-                                .includes("week")
-                                ? 7
-                                : 3;
-                              itinerary = await generateItinerary(
-                                currentDestination.title,
-                                selections,
-                                startDate,
-                                duration,
-                              );
-                            }
-                            console.log("Generated itinerary:", itinerary);
-
-                            // Store the itinerary in localStorage
-                            localStorage.setItem(
-                              "generatedItinerary",
-                              JSON.stringify(itinerary),
-                            );
-
-                            // Store location data for each activity
-                            try {
-                              const { saveLocation } = await import(
-                                "../lib/locationService"
-                              );
-
-                              // Process each day's activities
-                              for (const day of itinerary.days) {
-                                for (const activity of day.activities) {
-                                  if (activity.lat && activity.long) {
-                                    // Save location data to database
-                                    const locationName =
-                                      activity.location || activity.title;
-                                    if (locationName) {
-                                      await saveLocation(
-                                        locationName,
-                                        parseFloat(activity.lat),
-                                        parseFloat(activity.long),
-                                      );
-
-                                      // If there's a city mentioned, save that too
-                                      const locationParts =
-                                        locationName.split(",");
-                                      if (locationParts.length > 1) {
-                                        const cityName =
-                                          locationParts[
-                                            locationParts.length - 1
-                                          ].trim();
-                                        if (cityName) {
-                                          await saveLocation(
-                                            cityName,
-                                            parseFloat(activity.lat),
-                                            parseFloat(activity.long),
-                                          );
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            } catch (error) {
-                              console.error(
-                                "Error saving location data:",
-                                error,
-                              );
-                            }
-
-                            // Save to Supabase if user is logged in
-                            try {
-                              const { data } = await supabase.auth.getUser();
-
-                              if (data.user) {
-                                // Check if an itinerary for this destination already exists
-                                const { data: existingItineraries } =
-                                  await supabase
-                                    .from("itineraries")
-                                    .select("*")
-                                    .eq("user_id", data.user.id)
-                                    .eq("destination", currentDestination.title)
-                                    .limit(1);
-
-                                // Only save if no existing itinerary is found
-                                if (
-                                  !existingItineraries ||
-                                  existingItineraries.length === 0
-                                ) {
-                                  const { saveItinerary } = await import(
-                                    "../lib/itineraryStorage"
-                                  );
-                                  await saveItinerary(
-                                    data.user.id,
-                                    currentDestination.title,
-                                    selections,
-                                    itinerary,
-                                    true, // Set isPublic to true by default
-                                  );
-
-                                  toast({
-                                    title: "Itinerary Saved",
-                                    description:
-                                      "Your itinerary has been saved and is public.",
-                                  });
-                                }
-                              }
-                            } catch (saveError) {
-                              console.error(
-                                "Error saving itinerary to database:",
-                                saveError,
-                              );
-                            }
-
-                            setDestinations((prev) =>
-                              prev.map((d) =>
-                                d.title === currentDestination.title
-                                  ? { ...d, itinerary }
-                                  : d,
-                              ),
-                            );
-                            // Update the selected destination with the itinerary
-                            const updatedDestination = {
-                              ...currentDestination,
-                              itinerary,
-                            };
-                            setSelectedDestination(updatedDestination);
-
-                            // Clear destinations array since we now have an itinerary
-                            setDestinations([]);
-
-                            // Store the selected destination and preferences in localStorage for persistence
-                            localStorage.setItem(
-                              "selectedDestination",
-                              JSON.stringify(updatedDestination),
-                            );
-
-                            // Also store the selections/preferences
-                            localStorage.setItem(
-                              "selectedPreferences",
-                              JSON.stringify(selections),
-                            );
-
-                            // Clear the progress interval
-                            clearInterval(progressInterval);
-
-                            // Update the itinerary in the context
-                            setItinerary(itinerary);
-
-                            // Set a flag in localStorage to trigger a reload in ScheduleView
-                            localStorage.setItem(
-                              "itineraryUpdate",
-                              Date.now().toString(),
-                            );
-
-                            // Force a re-render by updating URL parameter
-                            const url = new URL(window.location.href);
-                            url.searchParams.set(
-                              "itineraryUpdate",
-                              Date.now().toString(),
-                            );
-                            window.history.replaceState({}, "", url);
-
-                            // Dispatch a custom event to notify ScheduleView
-                            const customEvent = new CustomEvent(
-                              "itineraryChanged",
-                              {
-                                detail: { timestamp: Date.now() },
-                              },
-                            );
-                            document.dispatchEvent(customEvent);
-                          } catch (error) {
-                            console.error("Error generating itinerary:", error);
-
-                            // Notify schedule view of the error
-                            const errorEvent = new CustomEvent(
-                              "itineraryUpdated",
-                              {
-                                detail: { status: "error" },
-                              },
-                            );
-                            window.dispatchEvent(errorEvent);
-                          } finally {
-                            setIsGeneratingItinerary(false);
-                          }
                         }}
                       />
                     ))
@@ -1236,6 +1118,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     ] || []
                   }
                   onSelect={handleOptionSelect}
+                  category={preferenceOptions[currentQuestionIndex].category}
                 />
                 <div className="flex gap-2 mt-4">
                   {currentQuestionIndex > 0 && (
@@ -1606,6 +1489,54 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               setPendingSaveData(null);
             }
           }
+        }}
+      />
+
+      {/* Preferences Modal */}
+      <PreferencesModal
+        open={showPreferencesModal}
+        onOpenChange={setShowPreferencesModal}
+        initialPreferences={{
+          travelType: selections.travelType || [],
+          travelStyle: selections.travelStyle || [],
+          interests: selections.interests || [],
+          budget: selections.budget || [],
+          accommodation: selections.accommodation || [],
+          transportation: selections.transportation || [],
+        }}
+        onSave={(updatedPreferences) => {
+          // Update the selections with the new preferences
+          setSelections((prev) => ({
+            ...prev,
+            ...updatedPreferences,
+          }));
+
+          // Add a message to show the preferences were updated
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              type: "bot",
+              content:
+                "Your preferences have been updated. Let's continue with the next question.",
+              timestamp: new Date(),
+            },
+          ]);
+
+          // Move to the next question
+          const nextIndex = currentQuestionIndex + 1;
+          setCurrentQuestionIndex(nextIndex);
+
+          // Add next question as a message
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: (Date.now() + 1).toString(),
+              type: "bot",
+              content: preferenceOptions[nextIndex].question,
+              timestamp: new Date(),
+            },
+          ]);
         }}
       />
     </Card>
