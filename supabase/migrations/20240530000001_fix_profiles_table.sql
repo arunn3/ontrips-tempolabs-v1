@@ -1,0 +1,3 @@
+-- This migration file is a placeholder
+-- The profiles table will be created through the Supabase UI
+-- or through direct API calls in the application code

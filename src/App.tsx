@@ -3,6 +3,7 @@ import { useRoutes, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./components/home";
 import routes from "tempo-routes";
 import MagazineLayout from "./components/MagazineLayout";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 const AuthCallback = lazy(() => import("./components/auth/AuthCallback"));
 const DestinationGallery = lazy(
@@ -10,6 +11,9 @@ const DestinationGallery = lazy(
 );
 const DestinationDetails = lazy(
   () => import("./components/DestinationDetails"),
+);
+const OnboardingFlow = lazy(
+  () => import("./components/onboarding/OnboardingFlow"),
 );
 
 function App() {
@@ -34,6 +38,7 @@ function App() {
           }
         />
         <Route path="/planner" element={<Home />} />
+        <Route path="/onboarding" element={<OnboardingFlow />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
       {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -18,15 +18,45 @@ interface AuthModalProps {
 
 const AuthModal = ({ trigger = <Button>Sign In</Button> }: AuthModalProps) => {
   const [open, setOpen] = useState(false);
+  const [lastOpenTime, setLastOpenTime] = useState(0);
   const { user } = useAuth();
 
   const handleSuccess = () => {
-    // Close the modal after successful auth
-    setTimeout(() => setOpen(false), 1500);
+    // Add a small delay before closing the modal to ensure state updates are processed
+    setTimeout(() => setOpen(false), 500);
   };
 
+  // Only close modal automatically when user signs in successfully
+  // We don't want to close it when user is null and modal is opened for sign-in
+  useEffect(() => {
+    const wasOpen = open;
+    // Only close if we had a user appear (sign in) or disappear (sign out) while modal was open
+    if (user && wasOpen) {
+      // User just signed in, modal will close via handleSuccess
+    } else if (
+      user === null &&
+      wasOpen &&
+      document.activeElement?.tagName !== "INPUT"
+    ) {
+      // Only close on sign-out, not on initial open when user is null
+      // Also don't close if user is typing in an input field
+      const modalWasJustOpened = Date.now() - lastOpenTime < 500;
+      if (!modalWasJustOpened) {
+        setOpen(false);
+      }
+    }
+  }, [user, open]);
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(newOpen) => {
+        if (newOpen) {
+          setLastOpenTime(Date.now());
+        }
+        setOpen(newOpen);
+      }}
+    >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
