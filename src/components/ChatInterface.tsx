@@ -1090,9 +1090,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const showingResults = currentQuestionIndex >= preferenceOptions.length;
 
   return (
-    <Card className="w-full h-full bg-white flex flex-col">
+    <Card className="w-full h-full bg-white flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b space-y-4 sticky top-0 bg-white z-10">
+      <div className="p-2 sm:p-4 border-b space-y-2 sm:space-y-4 sticky top-0 bg-white z-10">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold flex items-center gap-2">
             <span>SagaScout</span>
@@ -1277,7 +1277,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         </div>
         {/* Current Trip Details */}
-        <div className="space-y-2 bg-muted p-3 rounded-lg">
+        <div className="space-y-1 sm:space-y-2 bg-muted p-2 sm:p-3 rounded-lg">
           <h3 className="font-medium text-sm mb-2">Current Itinerary</h3>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <MapPin className="h-4 w-4" />
@@ -1376,7 +1376,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       </div>
 
       {/* Main Content */}
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea className="flex-1 p-2 sm:p-4">
         {showingResults ? (
           <div className="space-y-6">
             {/* Destination Results - Display Destinations or DestinationDetails conditionally */}
@@ -1495,7 +1495,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     category={preferenceOptions[currentQuestionIndex].category}
                   />
                 )}
-                <div className="flex gap-2 mt-4 sticky bottom-0 bg-white py-2 z-10">
+                <div className="flex gap-1 sm:gap-2 mt-2 sm:mt-4 sticky bottom-0 bg-white py-1 sm:py-2 z-10">
                   {currentQuestionIndex > 0 && (
                     <Button
                       variant="outline"

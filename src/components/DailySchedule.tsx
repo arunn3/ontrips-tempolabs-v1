@@ -433,8 +433,8 @@ const DailySchedule = ({
   };
 
   return (
-    <Card className="w-full h-full bg-white p-3 sm:p-4 md:p-6 flex flex-col relative">
-      <div className="flex justify-between items-center mb-3 sm:mb-6 flex-shrink-0">
+    <Card className="w-full h-full bg-white p-2 sm:p-4 md:p-6 flex flex-col relative overflow-hidden">
+      <div className="flex justify-between items-center mb-2 sm:mb-4 flex-shrink-0">
         <h2 className="text-lg sm:text-xl md:text-2xl font-semibold">
           Daily Schedule
         </h2>
@@ -488,7 +488,7 @@ const DailySchedule = ({
                     whileHover={{ scale: 1.01 }}
                     onClick={() => toggleExpand(activity.id)}
                   >
-                    <Card className="p-4 cursor-move bg-white border hover:border-blue-200 transition-colors">
+                    <Card className="p-3 sm:p-4 cursor-move bg-white border hover:border-blue-200 transition-colors">
                       <div className="flex items-center gap-4">
                         <Tooltip>
                           <TooltipTrigger>

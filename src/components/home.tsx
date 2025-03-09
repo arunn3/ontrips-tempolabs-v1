@@ -112,34 +112,34 @@ const Home = ({ onMenuClick = () => {} }: HomeProps) => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-6">
+      <main className="container mx-auto px-1 sm:px-4 py-2 sm:py-6">
         {isMobile ? (
           // Mobile layout - stack views and show only one at a time
-          <div className="h-[calc(100vh-120px)]">
+          <div className="h-[calc(100vh-100px)]">
             {mobileView === "schedule" ? (
-              <ScrollArea className="h-full">
+              <ScrollArea className="h-full overflow-hidden">
                 <ScheduleView />
               </ScrollArea>
             ) : (
-              <ScrollArea className="h-full">
+              <ScrollArea className="h-full overflow-hidden">
                 <ChatInterface />
               </ScrollArea>
             )}
           </div>
         ) : (
           // Desktop layout - side by side views
-          <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-[calc(100vh-120px)]">
+          <div className="flex flex-col lg:flex-row gap-2 lg:gap-6 h-[calc(100vh-100px)]">
             {/* Schedule View */}
             <div className="flex-1">
-              <ScrollArea className="h-full">
+              <ScrollArea className="h-full overflow-hidden">
                 <ScheduleView />
               </ScrollArea>
             </div>
 
             {/* Chat Interface */}
             {showChat && (
-              <div className="lg:w-[400px]">
-                <ScrollArea className="h-full">
+              <div className="lg:w-[400px] h-full">
+                <ScrollArea className="h-full overflow-hidden">
                   <ChatInterface />
                 </ScrollArea>
               </div>

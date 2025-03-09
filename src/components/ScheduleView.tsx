@@ -571,9 +571,9 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   // Removed loadItinerary function as it's now inlined in the useEffects
 
   return (
-    <div className="h-[calc(100vh-120px)] w-full bg-gray-50 p-2 sm:p-4 md:p-6 flex flex-col overflow-hidden">
-      <Card className="p-3 sm:p-4 bg-white mb-4 sm:mb-6 flex-shrink-0">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
+    <div className="h-[calc(100vh-120px)] w-full bg-gray-50 p-1 sm:p-4 md:p-6 flex flex-col overflow-hidden">
+      <Card className="p-2 sm:p-4 bg-white mb-2 sm:mb-6 flex-shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4">
           <div className="flex items-center gap-2">
             <Calendar className="w-5 h-5 text-gray-500" />
             <h2 className="text-base sm:text-lg font-semibold truncate">
@@ -589,14 +589,14 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
           <div className="flex flex-col gap-2 sm:gap-3">
             {itineraryDays.length > 0 && (
               <ScrollArea className="w-full">
-                <div className="flex gap-1 p-1">
+                <div className="flex gap-1 py-1 overflow-x-auto max-w-full">
                   {itineraryDays.map((day, index) => (
                     <Button
                       key={index}
                       variant={selectedDay === index ? "default" : "outline"}
                       size="sm"
                       onClick={() => handleDayChange(index)}
-                      className="whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3"
+                      className="whitespace-nowrap text-xs sm:text-sm px-1.5 sm:px-3 py-1 sm:py-2"
                     >
                       Day {index + 1}
                     </Button>
