@@ -2,7 +2,15 @@ import React, { useState, useEffect } from "react";
 import { Card } from "./ui/card";
 import { ScrollArea } from "./ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
-import { Bot, Calendar, Edit2, MapPin, Users, Heart } from "lucide-react";
+import {
+  Bot,
+  Calendar,
+  Edit2,
+  MapPin,
+  Users,
+  Heart,
+  RefreshCw,
+} from "lucide-react";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -1092,43 +1100,181 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               NEW
             </Badge>
           </h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              // Reset the chat and clear all selections and destination
-              setCurrentQuestionIndex(0);
-              // Clear the selected destination and itinerary
-              setSelectedDestination(null);
-              setSelections({});
-              localStorage.removeItem("selectedDestination");
-              localStorage.removeItem("generatedItinerary");
-              localStorage.removeItem("selectedPreferences");
+          <div className="flex items-center gap-2">
+            {selectedDestination?.itinerary && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={async () => {
+                  if (!selectedDestination) return;
 
-              // Dispatch event to clear the schedule view
-              const itineraryUpdatedEvent = new CustomEvent(
-                "itineraryUpdated",
-                {
-                  detail: { itinerary: null, status: "clear" },
-                },
-              );
-              window.dispatchEvent(itineraryUpdatedEvent);
+                  try {
+                    setIsGeneratingItinerary(true);
+                    setLocalGenerationProgress(0);
 
-              // Reset messages to initial state
-              setMessages([
-                {
-                  id: "1",
-                  type: "bot",
-                  content:
-                    "Hi! Let's help you discover your perfect destination. I'll ask you a few questions about your preferences.",
-                  timestamp: new Date(),
-                },
-              ]);
-            }}
-            title="Edit preferences"
-          >
-            <Edit2 className="h-4 w-4" />
-          </Button>
+                    // Dispatch event to show progress
+                    const startEvent = new CustomEvent("itineraryUpdated", {
+                      detail: { status: "generating", progress: 0 },
+                    });
+                    window.dispatchEvent(startEvent);
+
+                    // Set the context state
+                    setIsGenerating(true);
+                    setGenerationProgress(0);
+
+                    // Update progress periodically
+                    const progressInterval = setInterval(() => {
+                      setLocalGenerationProgress((prev) => {
+                        const increment = 5 + Math.floor(Math.random() * 10);
+                        const newProgress = Math.min(95, prev + increment);
+                        setGenerationProgress(newProgress);
+                        window.dispatchEvent(
+                          new CustomEvent("itineraryUpdated", {
+                            detail: {
+                              status: "generating",
+                              progress: newProgress,
+                            },
+                          }),
+                        );
+                        return newProgress;
+                      });
+                    }, 2000);
+
+                    // Extract start date from existing itinerary
+                    const startDateStr =
+                      selectedDestination.itinerary.days[0].date;
+                    const startDate = new Date(startDateStr);
+
+                    // Extract duration from existing itinerary
+                    const duration = selectedDestination.itinerary.days.length;
+
+                    // Generate new itinerary
+                    const { generateItinerary } = await import("../lib/gemini");
+                    const newItinerary = await generateItinerary(
+                      selectedDestination.title,
+                      selections,
+                      startDate,
+                      duration,
+                    );
+
+                    // Store the itinerary in localStorage
+                    localStorage.setItem(
+                      "generatedItinerary",
+                      JSON.stringify(newItinerary),
+                    );
+
+                    // Update the selected destination with the new itinerary
+                    const updatedDestination = {
+                      ...selectedDestination,
+                      itinerary: newItinerary,
+                    };
+                    setSelectedDestination(updatedDestination);
+                    setDestinations([updatedDestination]);
+                    localStorage.setItem(
+                      "selectedDestination",
+                      JSON.stringify(updatedDestination),
+                    );
+
+                    // Clear the progress interval
+                    clearInterval(progressInterval);
+
+                    // Update the itinerary in the context and reset generation state
+                    setItinerary(newItinerary);
+                    setIsGenerating(false);
+                    setGenerationProgress(100);
+
+                    // Dispatch event to notify ScheduleView that generation is complete
+                    const completeEvent = new CustomEvent("itineraryUpdated", {
+                      detail: { status: "complete", itinerary: newItinerary },
+                    });
+                    window.dispatchEvent(completeEvent);
+
+                    // Set a flag in localStorage to trigger a reload in ScheduleView
+                    localStorage.setItem(
+                      "itineraryUpdate",
+                      Date.now().toString(),
+                    );
+
+                    // Force a re-render by updating URL parameter
+                    const url = new URL(window.location.href);
+                    url.searchParams.set(
+                      "itineraryUpdate",
+                      Date.now().toString(),
+                    );
+                    window.history.replaceState({}, "", url);
+
+                    // Dispatch a custom event to notify ScheduleView
+                    const customEvent = new CustomEvent("itineraryChanged", {
+                      detail: { timestamp: Date.now() },
+                    });
+                    document.dispatchEvent(customEvent);
+
+                    toast({
+                      title: "Itinerary Regenerated",
+                      description:
+                        "Your itinerary has been regenerated with new activities.",
+                    });
+                  } catch (error) {
+                    console.error("Error regenerating itinerary:", error);
+                    toast({
+                      title: "Error",
+                      description:
+                        "Failed to regenerate itinerary. Please try again.",
+                      variant: "destructive",
+                    });
+
+                    // Notify schedule view of the error
+                    const errorEvent = new CustomEvent("itineraryUpdated", {
+                      detail: { status: "error" },
+                    });
+                    window.dispatchEvent(errorEvent);
+                  } finally {
+                    setIsGeneratingItinerary(false);
+                  }
+                }}
+                title="Regenerate itinerary"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                // Reset the chat and clear all selections and destination
+                setCurrentQuestionIndex(0);
+                // Clear the selected destination and itinerary
+                setSelectedDestination(null);
+                setSelections({});
+                localStorage.removeItem("selectedDestination");
+                localStorage.removeItem("generatedItinerary");
+                localStorage.removeItem("selectedPreferences");
+
+                // Dispatch event to clear the schedule view
+                const itineraryUpdatedEvent = new CustomEvent(
+                  "itineraryUpdated",
+                  {
+                    detail: { itinerary: null, status: "clear" },
+                  },
+                );
+                window.dispatchEvent(itineraryUpdatedEvent);
+
+                // Reset messages to initial state
+                setMessages([
+                  {
+                    id: "1",
+                    type: "bot",
+                    content:
+                      "Hi! Let's help you discover your perfect destination. I'll ask you a few questions about your preferences.",
+                    timestamp: new Date(),
+                  },
+                ]);
+              }}
+              title="Edit preferences"
+            >
+              <Edit2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         {/* Current Trip Details */}
         <div className="space-y-2 bg-muted p-3 rounded-lg">
@@ -1170,7 +1316,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <h4 className="text-xs font-medium mb-1">
                 Selected Preferences:
               </h4>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap max-h-24 overflow-y-auto">
                 {Object.entries(selections).flatMap(([category, values]) => {
                   // Skip certain categories
                   if (
@@ -1349,7 +1495,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     category={preferenceOptions[currentQuestionIndex].category}
                   />
                 )}
-                <div className="flex gap-2 mt-4">
+                <div className="flex gap-2 mt-4 sticky bottom-0 bg-white py-2 z-10">
                   {currentQuestionIndex > 0 && (
                     <Button
                       variant="outline"

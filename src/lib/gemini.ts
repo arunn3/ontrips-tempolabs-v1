@@ -118,7 +118,7 @@ interface DayItinerary {
     duration: string;
     location: string;
     description: string;
-    type: "attraction" | "meal" | "transport" | "rest";
+    type: "attraction" | "meal" | "transport" | "rest" | "accommodation";
   }>;
 }
 
@@ -223,10 +223,11 @@ export async function generateItinerary(
 
         **RESPONSE INSTRUCTIONS:**
 
-        **IMPORTANT: You MUST respond with VALID JSON only.  No other text or explanations should be included in your response.**
+        **IMPORTANT: You MUST respond with VALID JSON only. No other text or explanations should be included in your response.**
+
+        **CRITICAL REQUIREMENT: Each day MUST include accommodation as the FINAL activity of the day where travelers will spend the night. The accommodation activity MUST have type="accommodation" and MUST be the last activity in each day's activities array.**
 
         **JSON FORMAT:**
-        json
         {
           "days": [
             {
@@ -239,7 +240,17 @@ export async function generateItinerary(
                   "duration": "X hours",
                   "location": "${city.name}",
                   "description": "Brief description",
-                  "type": "attraction | meal | transport | rest",
+                  "type": "attraction | meal | transport | rest | accommodation",
+                  "lat": "latitude",
+                  "long": "longitude"
+                },
+                {
+                  "time": "21:00",
+                  "title": "Overnight at Hotel Name",
+                  "duration": "12h",
+                  "location": "Hotel address",
+                  "description": "Check in to your accommodation for the night",
+                  "type": "accommodation",
                   "lat": "latitude",
                   "long": "longitude"
                 }
@@ -249,7 +260,9 @@ export async function generateItinerary(
           "summary": "Brief summary of the visit to ${city.name}",
           "totalActivities": 10,
           "estimatedCost": "$X,XXX"
-        }`;
+        }
+        
+        CRITICAL: The last activity for EVERY day MUST be an accommodation with type="accommodation". Do not forget this requirement.`;
 
       // Add a 5 second delay between API calls
       if (cities.indexOf(city) > 0) {
@@ -298,6 +311,69 @@ export async function generateItinerary(
               }
             }
           }
+
+          // Always add accommodation as the last activity of each day, regardless of what the API returned
+          const activities = day.activities;
+
+          // Remove any existing accommodation activities to avoid duplicates
+          const nonAccommodationActivities = activities.filter(
+            (activity) => activity.type !== "accommodation",
+          );
+
+          // Create a hotel name based on the city
+          const hotelName = `${city.name} ${["Grand Hotel", "Plaza Hotel", "Boutique Inn", "Luxury Suites", "City Lodge"][Math.floor(Math.random() * 5)]}`;
+
+          // Get the time for accommodation (evening, after the last activity)
+          let accommodationTime = "20:00";
+          if (nonAccommodationActivities.length > 0) {
+            const lastActivity =
+              nonAccommodationActivities[nonAccommodationActivities.length - 1];
+            const lastTime = lastActivity.time;
+            const lastDuration = lastActivity.duration;
+
+            // Parse the last activity's time and add its duration to get the accommodation time
+            const [hours, minutes] = lastTime.split(":").map(Number);
+            let durationHours = 0;
+
+            if (lastDuration.includes("h")) {
+              durationHours = parseFloat(lastDuration.replace("h", ""));
+            } else if (lastDuration.includes("hour")) {
+              durationHours = parseFloat(lastDuration.replace(/[^0-9.]/g, ""));
+            } else if (lastDuration.includes("min")) {
+              durationHours =
+                parseFloat(lastDuration.replace(/[^0-9.]/g, "")) / 60;
+            }
+
+            let newHours = hours + Math.floor(durationHours);
+            let newMinutes = minutes + Math.floor((durationHours % 1) * 60);
+
+            if (newMinutes >= 60) {
+              newHours += 1;
+              newMinutes -= 60;
+            }
+
+            if (newHours >= 24) {
+              newHours -= 24;
+            }
+
+            accommodationTime = `${String(newHours).padStart(2, "0")}:${String(newMinutes).padStart(2, "0")}`;
+          }
+
+          // Replace the activities array with non-accommodation activities plus the new accommodation
+          day.activities = [
+            ...nonAccommodationActivities,
+            {
+              time: accommodationTime,
+              title: `Overnight Stay at ${hotelName}`,
+              duration: "12h",
+              location: hotelName,
+              description:
+                "Check in to your accommodation for the night and rest for tomorrow's adventures.",
+              type: "accommodation",
+              lat: 0,
+              long: 0,
+            },
+          ];
         }
 
         // Add city days to overall itinerary
