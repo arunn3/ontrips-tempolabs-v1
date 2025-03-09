@@ -15,6 +15,8 @@ import {
   Trash2,
   MapPin,
   Calendar,
+  Globe,
+  Users,
 } from "lucide-react";
 import { motion, Reorder } from "framer-motion";
 import { Badge } from "./ui/badge";
@@ -30,6 +32,7 @@ import {
 } from "./ui/dialog";
 import NearbyAttractionsDialog from "./NearbyAttractionsDialog";
 import { useToast } from "./ui/use-toast";
+import { supabase } from "@/lib/supabase";
 
 interface Activity {
   id: string;
@@ -180,17 +183,51 @@ const DailySchedule = ({
   const [showAddDialog, setShowAddDialog] = React.useState(false);
   const [showNearbyAttractionsDialog, setShowNearbyAttractionsDialog] =
     React.useState(false);
+  const [showPublicPrivateDialog, setShowPublicPrivateDialog] =
+    React.useState(false);
   const [nearbyAttractions, setNearbyAttractions] = React.useState<any[]>([]);
   const [isLoadingAttractions, setIsLoadingAttractions] = React.useState(false);
   const [currentLocation, setCurrentLocation] = React.useState<{
     lat: number;
     lng: number;
   }>({ lat: 0, lng: 0 });
+  const [hasChanges, setHasChanges] = React.useState(false);
+  const [originalActivities, setOriginalActivities] = React.useState<
+    Activity[]
+  >([]);
   const { toast } = useToast();
 
   React.useEffect(() => {
     setItems(activities);
+    // Store original activities for comparison to detect changes
+    if (activities.length > 0 && originalActivities.length === 0) {
+      setOriginalActivities([...activities]);
+    }
   }, [activities]);
+
+  // Check for changes whenever items are updated
+  React.useEffect(() => {
+    if (originalActivities.length === 0) return;
+
+    // Compare current items with original activities
+    const hasChanged = () => {
+      if (items.length !== originalActivities.length) return true;
+
+      return items.some((item, index) => {
+        const original = originalActivities[index];
+        if (!original) return true;
+
+        return (
+          item.time !== original.time ||
+          item.title !== original.title ||
+          item.duration !== original.duration ||
+          item.location !== original.location
+        );
+      });
+    };
+
+    setHasChanges(hasChanged());
+  }, [items, originalActivities]);
 
   const handleReorder = (newOrder: Activity[]) => {
     setItems(newOrder);
@@ -439,15 +476,13 @@ const DailySchedule = ({
           Daily Schedule
         </h2>
         <Button
-          onClick={() => {
-            setClickedButtonIndex(0);
-            setShowAddDialog(true);
-          }}
+          onClick={() => setShowPublicPrivateDialog(true)}
           size="sm"
           className="text-xs sm:text-sm"
+          disabled={!hasChanges}
+          variant="default"
         >
-          <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-          Add Activity
+          Save Itinerary
         </Button>
       </div>
 
@@ -638,6 +673,212 @@ const DailySchedule = ({
           </Reorder.Group>
         </TooltipProvider>
       </ScrollArea>
+
+      {/* Public/Private Dialog */}
+      <Dialog
+        open={showPublicPrivateDialog}
+        onOpenChange={setShowPublicPrivateDialog}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save Itinerary</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="mb-4">
+              Would you like to make this itinerary public or private?
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <Button
+                variant="outline"
+                className="p-6 flex flex-col items-center justify-center gap-2"
+                onClick={async () => {
+                  try {
+                    // Get current user
+                    const { data: userData } = await supabase.auth.getUser();
+                    if (!userData?.user) {
+                      toast({
+                        title: "Error",
+                        description:
+                          "You must be signed in to save an itinerary",
+                        variant: "destructive",
+                      });
+                      setShowPublicPrivateDialog(false);
+                      return;
+                    }
+
+                    // Get the current destination from localStorage
+                    const storedDestination = localStorage.getItem(
+                      "selectedDestination",
+                    );
+                    if (!storedDestination) {
+                      toast({
+                        title: "Error",
+                        description: "No destination found",
+                        variant: "destructive",
+                      });
+                      setShowPublicPrivateDialog(false);
+                      return;
+                    }
+
+                    const destination = JSON.parse(storedDestination);
+
+                    // Create itinerary data structure
+                    const itineraryData = {
+                      days: [
+                        {
+                          date: new Date().toISOString().split("T")[0],
+                          activities: items.map((item) => ({
+                            time: item.time,
+                            title: item.title,
+                            duration: item.duration,
+                            location: item.location,
+                            description: item.description || "",
+                            type: item.type || "attraction",
+                          })),
+                        },
+                      ],
+                    };
+
+                    // Save to database
+                    const { data, error } = await supabase
+                      .from("itineraries")
+                      .insert({
+                        user_id: userData.user.id,
+                        destination: destination.title,
+                        summary: `${items.length} activities in ${destination.title}`,
+                        total_activities: items.length,
+                        estimated_cost: destination.priceRange || "Varies",
+                        is_public: false,
+                        itinerary_data: itineraryData,
+                        criteria_id: null,
+                      });
+
+                    if (error) throw error;
+
+                    toast({
+                      title: "Success",
+                      description: "Itinerary saved as private",
+                    });
+
+                    // Reset change tracking
+                    setOriginalActivities([...items]);
+                    setHasChanges(false);
+                    setShowPublicPrivateDialog(false);
+                  } catch (error) {
+                    console.error("Error saving itinerary:", error);
+                    toast({
+                      title: "Error",
+                      description: "Failed to save itinerary",
+                      variant: "destructive",
+                    });
+                    setShowPublicPrivateDialog(false);
+                  }
+                }}
+              >
+                <Users className="h-8 w-8 text-gray-500" />
+                <span className="font-medium">Private</span>
+                <span className="text-xs text-muted-foreground">
+                  Only visible to you
+                </span>
+              </Button>
+
+              <Button
+                variant="outline"
+                className="p-6 flex flex-col items-center justify-center gap-2"
+                onClick={async () => {
+                  try {
+                    // Get current user
+                    const { data: userData } = await supabase.auth.getUser();
+                    if (!userData?.user) {
+                      toast({
+                        title: "Error",
+                        description:
+                          "You must be signed in to save an itinerary",
+                        variant: "destructive",
+                      });
+                      setShowPublicPrivateDialog(false);
+                      return;
+                    }
+
+                    // Get the current destination from localStorage
+                    const storedDestination = localStorage.getItem(
+                      "selectedDestination",
+                    );
+                    if (!storedDestination) {
+                      toast({
+                        title: "Error",
+                        description: "No destination found",
+                        variant: "destructive",
+                      });
+                      setShowPublicPrivateDialog(false);
+                      return;
+                    }
+
+                    const destination = JSON.parse(storedDestination);
+
+                    // Create itinerary data structure
+                    const itineraryData = {
+                      days: [
+                        {
+                          date: new Date().toISOString().split("T")[0],
+                          activities: items.map((item) => ({
+                            time: item.time,
+                            title: item.title,
+                            duration: item.duration,
+                            location: item.location,
+                            description: item.description || "",
+                            type: item.type || "attraction",
+                          })),
+                        },
+                      ],
+                    };
+
+                    // Save to database
+                    const { data, error } = await supabase
+                      .from("itineraries")
+                      .insert({
+                        user_id: userData.user.id,
+                        destination: destination.title,
+                        summary: `${items.length} activities in ${destination.title}`,
+                        total_activities: items.length,
+                        estimated_cost: destination.priceRange || "Varies",
+                        is_public: true,
+                        itinerary_data: itineraryData,
+                        criteria_id: null,
+                      });
+
+                    if (error) throw error;
+
+                    toast({
+                      title: "Success",
+                      description: "Itinerary saved as public",
+                    });
+
+                    // Reset change tracking
+                    setOriginalActivities([...items]);
+                    setHasChanges(false);
+                    setShowPublicPrivateDialog(false);
+                  } catch (error) {
+                    console.error("Error saving itinerary:", error);
+                    toast({
+                      title: "Error",
+                      description: "Failed to save itinerary",
+                      variant: "destructive",
+                    });
+                    setShowPublicPrivateDialog(false);
+                  }
+                }}
+              >
+                <Globe className="h-8 w-8 text-gray-500" />
+                <span className="font-medium">Public</span>
+                <span className="text-xs text-muted-foreground">
+                  Visible to everyone
+                </span>
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Activity Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
