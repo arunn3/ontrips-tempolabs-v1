@@ -54,21 +54,15 @@ export async function searchDestinations(
     // Save the search criteria and destinations to the database for future use
     if (destinations.length > 0) {
       try {
-        const { error: insertError } = await supabase
-          .from("search_criteria")
-          .insert({
-            user_id: userData.user.id,
-            preferences: selections,
-            destinations: destinations,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
+        // Insert using the standard Supabase client
+        const { data, error } = await supabase.from("search_criteria").insert({
+          user_id: userData.user.id,
+          preferences: selections,
+          destinations: destinations,
+        });
 
-        if (insertError) {
-          console.error(
-            "Error saving search criteria to database:",
-            insertError,
-          );
+        if (error) {
+          console.error("Error saving search criteria to database:", error);
 
           // If insert fails, try to create the table and retry
           console.error("Table might not exist, trying to create it...");
@@ -81,14 +75,12 @@ export async function searchDestinations(
 
           if (tableCreated) {
             // Try inserting again after creating the table
-            const { error: retryError } = await supabase
+            const { data: retryData, error: retryError } = await supabase
               .from("search_criteria")
               .insert({
                 user_id: userData.user.id,
                 preferences: selections,
                 destinations: destinations,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
               });
 
             if (retryError) {

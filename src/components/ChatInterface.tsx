@@ -41,6 +41,73 @@ interface ChatInterfaceProps {
   isLoading?: boolean;
 }
 
+interface Activity {
+  name: string;
+  description: string;
+  duration: string;
+  image: string;
+  bestTime: string;
+  price: string;
+}
+
+interface Event {
+  name: string;
+  description: string;
+  date: string;
+  image: string;
+}
+
+interface Attraction {
+  name: string;
+  description: string;
+  image: string;
+  visitDuration: string;
+  bestTime: string;
+  price: string;
+}
+
+interface Weather {
+  temperature: string;
+  conditions: string;
+  rainfall: string;
+}
+
+interface Transportation {
+  options: string[];
+  costs: string;
+}
+
+interface Accommodation {
+  types: string[];
+  priceRanges: string;
+  recommendations: string[];
+}
+
+interface DestinationDetailsType {
+  activities: Activity[];
+  events: Event[];
+  attractions: Attraction[];
+  weather: Weather;
+  transportation: Transportation;
+  accommodation: Accommodation;
+  cities: any[];
+}
+
+interface Destination {
+  title: string;
+  description: string;
+  image: string;
+  matchPercentage: number;
+  rating: number;
+  priceRange: string;
+  details?: DestinationDetailsType;
+  itinerary?: GeneratedItinerary;
+}
+
+interface GeneratedItinerary {
+  days: any[];
+}
+
 const preferenceOptions: PreferenceOption[] = [
   {
     category: "destinationType",
@@ -190,74 +257,6 @@ const PreferenceSelector = ({
   );
 };
 
-interface Activity {
-  name: string;
-  description: string;
-  duration: string;
-  image: string;
-  bestTime: string;
-  price: string;
-}
-
-interface Event {
-  name: string;
-  description: string;
-  date: string;
-  image: string;
-}
-
-interface Attraction {
-  name: string;
-  description: string;
-  image: string;
-  visitDuration: string;
-  bestTime: string;
-  price: string;
-}
-
-interface Weather {
-  temperature: string;
-  conditions: string;
-  rainfall: string;
-}
-
-interface Transportation {
-  options: string[];
-  costs: string;
-}
-
-interface Accommodation {
-  types: string[];
-  priceRanges: string;
-  recommendations: string[];
-}
-
-interface DestinationDetailsType {
-  // Renamed to avoid conflict with component name
-  activities: Activity[];
-  events: Event[];
-  attractions: Attraction[];
-  weather: Weather;
-  transportation: Transportation;
-  accommodation: Accommodation;
-  cities: any[];
-}
-
-interface Destination {
-  title: string;
-  description: string;
-  image: string;
-  matchPercentage: number;
-  rating: number;
-  priceRange: string;
-  details?: DestinationDetailsType;
-  itinerary?: GeneratedItinerary;
-}
-
-interface GeneratedItinerary {
-  days: any[];
-}
-
 const DestinationCardComponent = ({
   destination,
   onClick,
@@ -279,8 +278,7 @@ const DestinationCardComponent = ({
         alt={destination.title}
         className="w-full h-full object-cover"
         onError={(e) => {
-          e.currentTarget.src =
-            "https://images.unsplash.com/photo-1589395937772-f67cc0e347e3";
+          e.currentTarget.src = `https://source.unsplash.com/featured/?${encodeURIComponent(destination.title)},travel`;
         }}
       />
       <div className="absolute top-3 right-3">
@@ -345,6 +343,12 @@ const DestinationDetailsComponent = ({
                 src={city.image}
                 alt={city.name}
                 className="w-full h-full object-cover rounded-md"
+                onError={(e) => {
+                  console.log(
+                    `Image error for city ${city.name}, using fallback`,
+                  );
+                  e.currentTarget.src = `https://source.unsplash.com/featured/?${encodeURIComponent(`${city.name} ${destination.title} city`)}`;
+                }}
               />
             </div>
             <h3 className="text-xl font-semibold mb-2">{city.name}</h3>
@@ -360,6 +364,12 @@ const DestinationDetailsComponent = ({
                       src={activity.image}
                       alt={activity.name}
                       className="w-12 h-12 rounded-md object-cover"
+                      onError={(e) => {
+                        console.log(
+                          `Image error for activity ${activity.name}, using fallback`,
+                        );
+                        e.currentTarget.src = `https://source.unsplash.com/featured/?${encodeURIComponent(`${activity.name} ${city.name}`)}`;
+                      }}
                     />
                     <div>
                       <h5 className="font-medium">{activity.name}</h5>
@@ -387,6 +397,12 @@ const DestinationDetailsComponent = ({
                       src={event.image}
                       alt={event.name}
                       className="w-12 h-12 rounded-md object-cover"
+                      onError={(e) => {
+                        console.log(
+                          `Image error for event ${event.name}, using fallback`,
+                        );
+                        e.currentTarget.src = `https://source.unsplash.com/featured/?${encodeURIComponent(`${event.name} ${city.name} event`)}`;
+                      }}
                     />
                     <div>
                       <h5 className="font-medium">{event.name}</h5>
@@ -466,13 +482,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   messages: initialMessages = [],
   onSendMessage = () => {},
   isLoading = false,
-}: ChatInterfaceProps) => {
+}) => {
   const { setItinerary, setIsGenerating, setGenerationProgress } =
     useItinerary();
   const [showDatePickerDialog, setShowDatePickerDialog] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selections, setSelections] = useState<Record<string, string[]>>({});
-  const [destinations, setDestinations] = useState<Destination[]>([]); // State to hold destinations
+  const [destinations, setDestinations] = useState<Destination[]>([]);
   const [selectedDestination, setSelectedDestination] =
     useState<Destination | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
@@ -568,6 +584,80 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             selections,
           );
 
+          // Add Pexels images for cities
+          if (details.cities && details.cities.length > 0) {
+            const { getImageFromPexels } = await import("../lib/pexels");
+
+            // Process each city to get better images
+            for (const city of details.cities) {
+              try {
+                // Get a high-quality image for the city
+                const cityImage = await getImageFromPexels(
+                  `${city.name} ${selectedDestination.title} city skyline`,
+                  "landscape",
+                );
+                city.image =
+                  cityImage ||
+                  `https://source.unsplash.com/featured/?${encodeURIComponent(`${city.name} ${selectedDestination.title} city`)}`;
+                console.log(`Set city image for ${city.name} to ${city.image}`);
+
+                // Also update activity images if they exist
+                if (city.activities && Array.isArray(city.activities)) {
+                  for (const activity of city.activities) {
+                    try {
+                      const activityImage = await getImageFromPexels(
+                        `${activity.name} ${city.name} ${selectedDestination.title}`,
+                        "landscape",
+                      );
+                      activity.image =
+                        activityImage ||
+                        `https://source.unsplash.com/featured/?${encodeURIComponent(`${activity.name} ${city.name}`)}`;
+                      console.log(
+                        `Set activity image for ${activity.name} to ${activity.image}`,
+                      );
+                    } catch (imgError) {
+                      console.error(
+                        `Error fetching image for activity ${activity.name}:`,
+                        imgError,
+                      );
+                      activity.image = `https://source.unsplash.com/featured/?${encodeURIComponent(`${activity.name} ${city.name}`)}`;
+                    }
+                  }
+                }
+
+                // Update event images if they exist
+                if (city.events && Array.isArray(city.events)) {
+                  for (const event of city.events) {
+                    try {
+                      const eventImage = await getImageFromPexels(
+                        `${event.name} ${city.name} event`,
+                        "landscape",
+                      );
+                      event.image =
+                        eventImage ||
+                        `https://source.unsplash.com/featured/?${encodeURIComponent(`${event.name} ${city.name} event`)}`;
+                      console.log(
+                        `Set event image for ${event.name} to ${event.image}`,
+                      );
+                    } catch (imgError) {
+                      console.error(
+                        `Error fetching image for event ${event.name}:`,
+                        imgError,
+                      );
+                      event.image = `https://source.unsplash.com/featured/?${encodeURIComponent(`${event.name} ${city.name} event`)}`;
+                    }
+                  }
+                }
+              } catch (cityImgError) {
+                console.error(
+                  `Error fetching image for city ${city.name}:`,
+                  cityImgError,
+                );
+                city.image = `https://source.unsplash.com/featured/?${encodeURIComponent(`${city.name} ${selectedDestination.title} city`)}`;
+              }
+            }
+          }
+
           // Save the destination details to the database for future use
           try {
             const { data: userData } = await supabase.auth.getUser();
@@ -577,7 +667,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 title: selectedDestination.title,
                 details: details,
                 preferences: selections,
-                created_at: new Date().toISOString(),
               });
               console.log("Saved destination details to database");
             }
@@ -682,8 +771,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       return;
     }
-
-    // Special handling for specific country input is now at the top of the function
 
     // Special handling for tripPreferences category
     if (currentCategory === "tripPreferences") {
@@ -858,6 +945,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         // Show the preferences modal
         setShowPreferencesModal(true);
+
+        // Add the PreferencesModal component to the render tree
+        return;
       }
       return;
     }
@@ -991,12 +1081,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             // Create a destination directly from the specified country
             const countryName = selections.specificCountry[0];
 
+            // Import the Pexels image function
+            const { getImageFromPexels } = await import("../lib/pexels");
+
+            // Get image from Pexels API
+            let imageUrl;
+            try {
+              imageUrl = await getImageFromPexels(
+                `${countryName} travel`,
+                "landscape",
+              );
+            } catch (error) {
+              console.error(`Error fetching image for ${countryName}:`, error);
+              imageUrl = `https://source.unsplash.com/featured/?${encodeURIComponent(countryName)},travel`;
+            }
+
             // Create a single destination for the specified country
             fetchedDestinations = [
               {
                 title: countryName,
                 description: `Explore the beauty and culture of ${countryName}. This destination was selected based on your specific request.`,
-                image: `https://source.unsplash.com/featured/?${encodeURIComponent(countryName)},travel`,
+                image: imageUrl,
                 matchPercentage: 100,
                 rating: 4.8,
                 priceRange: "Varies by region",
@@ -1585,7 +1690,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onOpenChange={setShowDatePickerDialog}
         onDateSelect={(date) => {
           // Make sure we're using the correct destination that was clicked on
-          // Always use the explicitly selected destination, not the first one in the list
           const selectedDest = selectedDestination;
           if (selectedDest) {
             // Call the generate itinerary function with the selected date
@@ -1730,73 +1834,56 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   console.error("Error saving location data:", error);
                 }
 
-                // Save to Supabase if user is logged in
-                try {
-                  const { data } = await supabase.auth.getUser();
-
-                  if (data.user) {
-                    // Check if an itinerary for this destination already exists
-                    const { data: existingItineraries } = await supabase
-                      .from("itineraries")
-                      .select("*")
-                      .eq("user_id", data.user.id)
-                      .eq("destination", selectedDest.title)
-                      .limit(1);
-
-                    // Only save if no existing itinerary is found
-                    if (
-                      !existingItineraries ||
-                      existingItineraries.length === 0
-                    ) {
-                      const { saveItinerary } = await import(
-                        "../lib/itineraryStorage"
-                      );
-                      await saveItinerary(
-                        data.user.id,
-                        selectedDest.title,
-                        selections,
-                        itinerary,
-                        true, // Set isPublic to true by default
-                      );
-
-                      toast({
-                        title: "Itinerary Saved",
-                        description:
-                          "Your itinerary has been saved and is public.",
-                      });
-                    }
-                  }
-                } catch (saveError) {
-                  console.error(
-                    "Error saving itinerary to database:",
-                    saveError,
-                  );
-                }
-
-                setDestinations((prev) =>
-                  prev.map((d) =>
-                    d.title === selectedDest.title ? { ...d, itinerary } : d,
-                  ),
-                );
-                // Update the selected destination with the itinerary
-                const updatedDestination = { ...selectedDest, itinerary };
+                // Update the selected destination with the new itinerary
+                const updatedDestination = {
+                  ...selectedDest,
+                  itinerary: itinerary,
+                };
                 setSelectedDestination(updatedDestination);
-
-                // Clear destinations array since we now have an itinerary
-                // This prevents other destinations from being displayed
                 setDestinations([updatedDestination]);
-
-                // Store the selected destination and preferences in localStorage for persistence
                 localStorage.setItem(
                   "selectedDestination",
                   JSON.stringify(updatedDestination),
                 );
 
-                // Also store the selections/preferences
-                localStorage.setItem(
-                  "selectedPreferences",
-                  JSON.stringify(selections),
-                );
+                // Save the destination to the destinations table
+                try {
+                  const { data: userData } = await supabase.auth.getUser();
+                  if (userData.user) {
+                    // Check if this destination already exists for this user
+                    const { data: existingDestinations } = await supabase
+                      .from("destinations")
+                      .select("id")
+                      .eq("user_id", userData.user.id)
+                      .eq("title", selectedDest.title)
+                      .limit(1);
+
+                    if (
+                      !existingDestinations ||
+                      existingDestinations.length === 0
+                    ) {
+                      // Insert the destination if it doesn't exist
+                      await supabase.from("destinations").insert({
+                        user_id: userData.user.id,
+                        title: selectedDest.title,
+                        description: selectedDest.description,
+                        image: selectedDest.image,
+                        match_percentage: selectedDest.matchPercentage,
+                        rating: selectedDest.rating,
+                        price_range: selectedDest.priceRange,
+                        preferences: selections,
+                      });
+                      console.log("Saved destination to destinations table");
+                    } else {
+                      console.log("Destination already exists in database");
+                    }
+                  }
+                } catch (saveError) {
+                  console.error(
+                    "Error saving destination to database:",
+                    saveError,
+                  );
+                }
 
                 // Clear the progress interval
                 clearInterval(progressInterval);
@@ -1808,7 +1895,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
                 // Dispatch event to notify ScheduleView that generation is complete
                 const completeEvent = new CustomEvent("itineraryUpdated", {
-                  detail: { status: "complete", itinerary },
+                  detail: { status: "complete", itinerary: itinerary },
                 });
                 window.dispatchEvent(completeEvent);
 
@@ -1825,6 +1912,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   detail: { timestamp: Date.now() },
                 });
                 document.dispatchEvent(customEvent);
+
+                toast({
+                  title: "Itinerary Generated",
+                  description: `Your ${itinerary.days.length}-day itinerary for ${selectedDest.title} has been created.`,
+                });
               } catch (error) {
                 console.error("Error generating itinerary:", error);
                 toast({
@@ -1841,98 +1933,35 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 window.dispatchEvent(errorEvent);
               } finally {
                 setIsGeneratingItinerary(false);
+                setShowDatePickerDialog(false);
               }
             };
 
+            // Execute the generate function
             generateFn();
           }
         }}
       />
 
-      {/* Public/Private Dialog */}
-      <PublicPrivateDialog
-        open={showPublicPrivateDialog}
-        onOpenChange={setShowPublicPrivateDialog}
-        onConfirm={async (isPublic) => {
-          if (pendingSaveData) {
-            try {
-              const { saveItinerary } = await import("../lib/itineraryStorage");
-              const result = await saveItinerary(
-                pendingSaveData.userId,
-                pendingSaveData.destination,
-                pendingSaveData.selections,
-                pendingSaveData.itinerary,
-                isPublic,
-              );
-
-              if (result) {
-                console.log("Itinerary saved to database with ID:", result.id);
-                toast({
-                  title: "Itinerary Saved",
-                  description: `Your itinerary has been saved ${isPublic ? "and is public" : "as private"}.`,
-                });
-              }
-            } catch (error) {
-              console.error("Error saving itinerary:", error);
-              toast({
-                title: "Error",
-                description: "Failed to save itinerary. Please try again.",
-                variant: "destructive",
-              });
-            } finally {
-              setPendingSaveData(null);
-            }
-          }
-        }}
-      />
-
       {/* Preferences Modal */}
-      <PreferencesModal
-        open={showPreferencesModal}
-        onOpenChange={setShowPreferencesModal}
-        initialPreferences={{
-          travelType: selections.travelType || [],
-          travelStyle: selections.travelStyle || [],
-          interests: selections.interests || [],
-          budget: selections.budget || [],
-          accommodation: selections.accommodation || [],
-          transportation: selections.transportation || [],
-        }}
-        onSave={(updatedPreferences) => {
-          // Update the selections with the new preferences
-          setSelections((prev) => ({
-            ...prev,
-            ...updatedPreferences,
-          }));
-
-          // Add a message to show the preferences were updated
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              type: "bot",
-              content:
-                "Your preferences have been updated. Let's continue with the next question.",
-              timestamp: new Date(),
-            },
-          ]);
-
-          // Move to the next question
-          const nextIndex = currentQuestionIndex + 1;
-          setCurrentQuestionIndex(nextIndex);
-
-          // Add next question as a message
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: (Date.now() + 1).toString(),
-              type: "bot",
-              content: preferenceOptions[nextIndex].question,
-              timestamp: new Date(),
-            },
-          ]);
-        }}
-      />
+      {showPreferencesModal && (
+        <PreferencesModal
+          open={showPreferencesModal}
+          onOpenChange={setShowPreferencesModal}
+          initialPreferences={selections}
+          onSave={(newPreferences) => {
+            setSelections((prev) => ({
+              ...prev,
+              ...newPreferences,
+            }));
+            setShowPreferencesModal(false);
+            toast({
+              title: "Preferences Updated",
+              description: "Your travel preferences have been updated.",
+            });
+          }}
+        />
+      )}
     </Card>
   );
 };

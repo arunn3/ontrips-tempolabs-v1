@@ -70,7 +70,7 @@ export async function searchDestinations(
       {
         "title": "Country",
         "description": "Brief description",
-        "image": "[One of: https://images.unsplash.com/photo-1499856871958-5b9627545d1a, https://images.unsplash.com/photo-1555992828-ca4dbe41d294, https://images.unsplash.com/photo-1523906834658-6e24ef2386f9]",
+        "image": "", // Leave empty, we'll fetch images separately
         "matchPercentage": 85,
         "rating": 4.5,
         "priceRange": "$200-300/day"
@@ -94,11 +94,38 @@ export async function searchDestinations(
 
       // Parse the JSON
       const destinations = JSON.parse(cleanText);
-      return destinations.map((d: any) => ({
-        ...d,
-        matchPercentage: Number(d.matchPercentage),
-        rating: Number(d.rating),
-      }));
+      // Import the Pexels image function
+      const { getImageFromPexels } = await import("./pexels");
+
+      // Process destinations and add images
+      const processedDestinations = [];
+      for (const d of destinations) {
+        try {
+          // Fetch image from Pexels API
+          const imageUrl = await getImageFromPexels(
+            `${d.title} travel`,
+            "landscape",
+          );
+
+          processedDestinations.push({
+            ...d,
+            matchPercentage: Number(d.matchPercentage),
+            rating: Number(d.rating),
+            image: imageUrl,
+          });
+        } catch (error) {
+          console.error(`Error processing destination ${d.title}:`, error);
+          // Add with fallback image
+          processedDestinations.push({
+            ...d,
+            matchPercentage: Number(d.matchPercentage),
+            rating: Number(d.rating),
+            image: `https://source.unsplash.com/featured/?${encodeURIComponent(d.title)},travel`,
+          });
+        }
+      }
+
+      return processedDestinations;
     } catch (parseError) {
       console.error("Error parsing response:", parseError);
       console.log("Raw response:", text);
@@ -485,19 +512,19 @@ export async function getDestinationDetails(
         .map(([category, values]) => `${category}: ${values.join(", ")}`)
         .join("\n")}
 
-      Return a JSON object with exactly this structure (use only these exact image URLs for images). IMPORTANT: Include exactly 3 activities per city, no more:
+      Return a JSON object with exactly this structure. IMPORTANT: Include exactly 3 activities per city, no more, and leave image fields empty (we'll fetch them separately):
       {
         "cities": [
           {
             "name": "City Name",
             "description": "Brief city description",
-            "image": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a",
+            "image": "",
             "activities": [
               {
                 "name": "Activity name",
                 "description": "Brief description",
                 "duration": "2-3 hours",
-                "image": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a",
+                "image": "",
                 "bestTime": "Morning",
                 "price": "$50"
               }
@@ -507,7 +534,7 @@ export async function getDestinationDetails(
                 "name": "Event name",
                 "description": "Brief description",
                 "date": "Specific date/period",
-                "image": "https://images.unsplash.com/photo-1555992828-ca4dbe41d294"
+                "image": ""
               }
             ]
           }
@@ -551,9 +578,10 @@ export async function getDestinationDetails(
       cleanText = cleanText.substring(startIndex, endIndex);
       console.log("Cleaned response:", cleanText);
 
+      let parsedData;
       try {
         // First try to parse the cleaned response
-        return JSON.parse(cleanText);
+        parsedData = JSON.parse(cleanText);
       } catch (e) {
         console.error("First parse attempt failed:", e);
 
@@ -568,8 +596,65 @@ export async function getDestinationDetails(
           .replace(/\/\*[\s\S]*?\*\//g, ""); // Remove multi-line comments
 
         console.log("Further cleaned response:", cleanText);
-        return JSON.parse(cleanText);
+        parsedData = JSON.parse(cleanText);
       }
+
+      // Import the Pexels image function
+      const { getImageFromPexels } = await import("./pexels");
+
+      // Add images to cities, activities, and events
+      if (parsedData.cities && Array.isArray(parsedData.cities)) {
+        for (const city of parsedData.cities) {
+          // Add city image
+          try {
+            city.image = await getImageFromPexels(
+              `${city.name} ${destination} city`,
+              "landscape",
+            );
+          } catch (error) {
+            console.error(`Error fetching image for city ${city.name}:`, error);
+            city.image = `https://source.unsplash.com/featured/?${encodeURIComponent(city.name)},city`;
+          }
+
+          // Add activity images
+          if (city.activities && Array.isArray(city.activities)) {
+            for (const activity of city.activities) {
+              try {
+                activity.image = await getImageFromPexels(
+                  `${activity.name} ${city.name} ${destination}`,
+                  "landscape",
+                );
+              } catch (error) {
+                console.error(
+                  `Error fetching image for activity ${activity.name}:`,
+                  error,
+                );
+                activity.image = `https://source.unsplash.com/featured/?${encodeURIComponent(activity.name)},activity`;
+              }
+            }
+          }
+
+          // Add event images
+          if (city.events && Array.isArray(city.events)) {
+            for (const event of city.events) {
+              try {
+                event.image = await getImageFromPexels(
+                  `${event.name} ${city.name} event`,
+                  "landscape",
+                );
+              } catch (error) {
+                console.error(
+                  `Error fetching image for event ${event.name}:`,
+                  error,
+                );
+                event.image = `https://source.unsplash.com/featured/?${encodeURIComponent(event.name)},event`;
+              }
+            }
+          }
+        }
+      }
+
+      return parsedData;
     } catch (parseError) {
       console.error("Error parsing response:", parseError);
       console.log("Raw response:", text);

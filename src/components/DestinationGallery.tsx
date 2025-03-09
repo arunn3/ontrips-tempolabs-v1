@@ -103,8 +103,7 @@ const DestinationGallery = () => {
                 alt={destination.title}
                 className="w-full h-full object-cover"
                 onError={(e) => {
-                  e.currentTarget.src =
-                    "https://images.unsplash.com/photo-1500835556837-99ac94a94552?w=800&q=80";
+                  e.currentTarget.src = `https://source.unsplash.com/featured/?${encodeURIComponent(destination.title)},travel&w=800&q=80`;
                 }}
               />
               <Button
