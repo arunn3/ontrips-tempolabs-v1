@@ -17,6 +17,10 @@ import {
   Calendar,
   Globe,
   Users,
+  Share2,
+  Copy,
+  Mail,
+  Check,
 } from "lucide-react";
 import { motion, Reorder } from "framer-motion";
 import { Badge } from "./ui/badge";
@@ -54,6 +58,8 @@ interface DailyScheduleProps {
   onReorder?: (activities: Activity[]) => void;
   onDelete?: (id: string) => void;
   onAdd?: () => void;
+  isGenerating?: boolean;
+  generationProgress?: number;
 }
 
 interface DurationEditorProps {
@@ -172,10 +178,7 @@ const DailySchedule = ({
   onAdd = () => {},
   isGenerating = false,
   generationProgress = 0,
-}: DailyScheduleProps & {
-  isGenerating?: boolean;
-  generationProgress?: number;
-}) => {
+}: DailyScheduleProps) => {
   const [items, setItems] = React.useState(activities);
   const [expandedItems, setExpandedItems] = React.useState<
     Record<string, boolean>
@@ -185,6 +188,11 @@ const DailySchedule = ({
     React.useState(false);
   const [showPublicPrivateDialog, setShowPublicPrivateDialog] =
     React.useState(false);
+  const [showShareDialog, setShowShareDialog] = React.useState(false);
+  const [shareUrl, setShareUrl] = React.useState("");
+  const [recipientEmail, setRecipientEmail] = React.useState("");
+  const [isCopied, setIsCopied] = React.useState(false);
+  const [isSendingEmail, setIsSendingEmail] = React.useState(false);
   const [nearbyAttractions, setNearbyAttractions] = React.useState<any[]>([]);
   const [isLoadingAttractions, setIsLoadingAttractions] = React.useState(false);
   const [currentLocation, setCurrentLocation] = React.useState<{
@@ -475,15 +483,26 @@ const DailySchedule = ({
         <h2 className="text-lg sm:text-xl md:text-2xl font-semibold">
           Daily Schedule
         </h2>
-        <Button
-          onClick={() => setShowPublicPrivateDialog(true)}
-          size="sm"
-          className="text-xs sm:text-sm"
-          disabled={!hasChanges}
-          variant="default"
-        >
-          Save Itinerary
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setShowPublicPrivateDialog(true)}
+            size="sm"
+            className="text-xs sm:text-sm"
+            disabled={!hasChanges}
+            variant="default"
+          >
+            Save Itinerary
+          </Button>
+          <Button
+            onClick={() => setShowShareDialog(true)}
+            size="sm"
+            className="text-xs sm:text-sm"
+            variant="outline"
+          >
+            <Share2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            Share
+          </Button>
+        </div>
       </div>
 
       <ScrollArea className="flex-1">
@@ -674,6 +693,513 @@ const DailySchedule = ({
         </TooltipProvider>
       </ScrollArea>
 
+      {/* Share Dialog */}
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share Itinerary</DialogTitle>
+          </DialogHeader>
+          {!shareUrl ? (
+            <div className="py-4">
+              <p className="mb-4">
+                How would you like to share this itinerary?
+              </p>
+              <div className="grid grid-cols-3 gap-4">
+                <Button
+                  variant="outline"
+                  className="p-4 h-auto flex flex-col items-center justify-center gap-2 text-center"
+                  onClick={async () => {
+                    try {
+                      // Get current user
+                      const { data: userData } = await supabase.auth.getUser();
+                      if (!userData?.user) {
+                        toast({
+                          title: "Error",
+                          description:
+                            "You must be signed in to share an itinerary",
+                          variant: "destructive",
+                        });
+                        setShowShareDialog(false);
+                        return;
+                      }
+
+                      // Get the current destination from localStorage
+                      const storedDestination = localStorage.getItem(
+                        "selectedDestination",
+                      );
+                      if (!storedDestination) {
+                        toast({
+                          title: "Error",
+                          description: "No destination found",
+                          variant: "destructive",
+                        });
+                        setShowShareDialog(false);
+                        return;
+                      }
+
+                      const destination = JSON.parse(storedDestination);
+
+                      // Get the current itinerary data from localStorage
+                      const storedItinerary =
+                        localStorage.getItem("generatedItinerary");
+                      let itineraryData;
+
+                      if (storedItinerary) {
+                        // Use the full multi-day itinerary if available
+                        itineraryData = JSON.parse(storedItinerary);
+
+                        // Update the current day's activities
+                        if (
+                          itineraryData.days &&
+                          itineraryData.days.length > 0
+                        ) {
+                          itineraryData.days[0].activities = items.map(
+                            (item) => ({
+                              time: item.time,
+                              title: item.title,
+                              duration: item.duration,
+                              location: item.location,
+                              description: item.description || "",
+                              type: item.type || "attraction",
+                            }),
+                          );
+                        }
+                      } else {
+                        // Create a new single-day itinerary if none exists
+                        itineraryData = {
+                          days: [
+                            {
+                              date: new Date().toISOString().split("T")[0],
+                              activities: items.map((item) => ({
+                                time: item.time,
+                                title: item.title,
+                                duration: item.duration,
+                                location: item.location,
+                                description: item.description || "",
+                                type: item.type || "attraction",
+                              })),
+                            },
+                          ],
+                        };
+                      }
+
+                      // Generate a unique ID for the share URL
+                      const shareId = crypto.randomUUID();
+
+                      // Save to database as private with share ID
+                      const { data, error } = await supabase
+                        .from("itineraries")
+                        .insert({
+                          user_id: userData.user.id,
+                          destination: destination.title,
+                          summary: `${items.length} activities in ${destination.title}`,
+                          total_activities: items.length,
+                          estimated_cost: destination.priceRange || "Varies",
+                          is_public: false,
+                          itinerary_data: itineraryData,
+                          criteria_id: null,
+                          share_id: shareId,
+                          share_status: "shared",
+                        });
+
+                      if (error) throw error;
+
+                      // Wait a moment to ensure the data is saved
+                      await new Promise((resolve) => setTimeout(resolve, 500));
+
+                      // Verify the itinerary was saved
+                      const { data: verifyData, error: verifyError } =
+                        await supabase
+                          .from("itineraries")
+                          .select("id")
+                          .eq("share_id", shareId)
+                          .single();
+
+                      if (verifyError || !verifyData) {
+                        throw new Error("Failed to verify itinerary was saved");
+                      }
+
+                      // Create share URL
+                      const shareUrl = `${window.location.origin}/shared-itinerary/${shareId}`;
+                      setShareUrl(shareUrl);
+
+                      toast({
+                        title: "Success",
+                        description: "Private share link created",
+                      });
+                    } catch (error) {
+                      console.error("Error creating share link:", error);
+                      toast({
+                        title: "Error",
+                        description: "Failed to create share link",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  <Users className="h-8 w-8 text-gray-500" />
+                  <span className="font-medium">Private Link</span>
+                  <span className="text-xs text-muted-foreground truncate w-full">
+                    Only accessible with the link
+                  </span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="p-4 h-auto flex flex-col items-center justify-center gap-2 text-center"
+                  onClick={async () => {
+                    try {
+                      // Get current user
+                      const { data: userData } = await supabase.auth.getUser();
+                      if (!userData?.user) {
+                        toast({
+                          title: "Error",
+                          description:
+                            "You must be signed in to share an itinerary",
+                          variant: "destructive",
+                        });
+                        setShowShareDialog(false);
+                        return;
+                      }
+
+                      // Get the current destination from localStorage
+                      const storedDestination = localStorage.getItem(
+                        "selectedDestination",
+                      );
+                      if (!storedDestination) {
+                        toast({
+                          title: "Error",
+                          description: "No destination found",
+                          variant: "destructive",
+                        });
+                        setShowShareDialog(false);
+                        return;
+                      }
+
+                      const destination = JSON.parse(storedDestination);
+
+                      // Get the current itinerary data from localStorage
+                      const storedItinerary =
+                        localStorage.getItem("generatedItinerary");
+                      let itineraryData;
+
+                      if (storedItinerary) {
+                        // Use the full multi-day itinerary if available
+                        itineraryData = JSON.parse(storedItinerary);
+
+                        // Update the current day's activities
+                        if (
+                          itineraryData.days &&
+                          itineraryData.days.length > 0
+                        ) {
+                          itineraryData.days[0].activities = items.map(
+                            (item) => ({
+                              time: item.time,
+                              title: item.title,
+                              duration: item.duration,
+                              location: item.location,
+                              description: item.description || "",
+                              type: item.type || "attraction",
+                            }),
+                          );
+                        }
+                      } else {
+                        // Create a new single-day itinerary if none exists
+                        itineraryData = {
+                          days: [
+                            {
+                              date: new Date().toISOString().split("T")[0],
+                              activities: items.map((item) => ({
+                                time: item.time,
+                                title: item.title,
+                                duration: item.duration,
+                                location: item.location,
+                                description: item.description || "",
+                                type: item.type || "attraction",
+                              })),
+                            },
+                          ],
+                        };
+                      }
+
+                      // Generate a unique ID for the share URL
+                      const shareId = crypto.randomUUID();
+
+                      // Save to database as shared with share ID
+                      const { data, error } = await supabase
+                        .from("itineraries")
+                        .insert({
+                          user_id: userData.user.id,
+                          destination: destination.title,
+                          summary: `${items.length} activities in ${destination.title}`,
+                          total_activities: items.length,
+                          estimated_cost: destination.priceRange || "Varies",
+                          is_public: false,
+                          itinerary_data: itineraryData,
+                          criteria_id: null,
+                          share_id: shareId,
+                          share_status: "shared",
+                        });
+
+                      if (error) throw error;
+
+                      // Wait a moment to ensure the data is saved
+                      await new Promise((resolve) => setTimeout(resolve, 500));
+
+                      // Verify the itinerary was saved
+                      const { data: verifyData, error: verifyError } =
+                        await supabase
+                          .from("itineraries")
+                          .select("id")
+                          .eq("share_id", shareId)
+                          .single();
+
+                      if (verifyError || !verifyData) {
+                        throw new Error("Failed to verify itinerary was saved");
+                      }
+
+                      // Create share URL
+                      const shareUrl = `${window.location.origin}/shared-itinerary/${shareId}`;
+                      setShareUrl(shareUrl);
+
+                      toast({
+                        title: "Success",
+                        description: "Shared link created",
+                      });
+                    } catch (error) {
+                      console.error("Error creating share link:", error);
+                      toast({
+                        title: "Error",
+                        description: "Failed to create share link",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  <Share2 className="h-8 w-8 text-gray-500" />
+                  <span className="font-medium">Shared Link</span>
+                  <span className="text-xs text-muted-foreground truncate w-full">
+                    Accessible with link only
+                  </span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="p-4 h-auto flex flex-col items-center justify-center gap-2 text-center"
+                  onClick={async () => {
+                    try {
+                      // Get current user
+                      const { data: userData } = await supabase.auth.getUser();
+                      if (!userData?.user) {
+                        toast({
+                          title: "Error",
+                          description:
+                            "You must be signed in to share an itinerary",
+                          variant: "destructive",
+                        });
+                        setShowShareDialog(false);
+                        return;
+                      }
+
+                      // Get the current destination from localStorage
+                      const storedDestination = localStorage.getItem(
+                        "selectedDestination",
+                      );
+                      if (!storedDestination) {
+                        toast({
+                          title: "Error",
+                          description: "No destination found",
+                          variant: "destructive",
+                        });
+                        setShowShareDialog(false);
+                        return;
+                      }
+
+                      const destination = JSON.parse(storedDestination);
+
+                      // Get the current itinerary data from localStorage
+                      const storedItinerary =
+                        localStorage.getItem("generatedItinerary");
+                      let itineraryData;
+
+                      if (storedItinerary) {
+                        // Use the full multi-day itinerary if available
+                        itineraryData = JSON.parse(storedItinerary);
+
+                        // Update the current day's activities
+                        if (
+                          itineraryData.days &&
+                          itineraryData.days.length > 0
+                        ) {
+                          itineraryData.days[0].activities = items.map(
+                            (item) => ({
+                              time: item.time,
+                              title: item.title,
+                              duration: item.duration,
+                              location: item.location,
+                              description: item.description || "",
+                              type: item.type || "attraction",
+                            }),
+                          );
+                        }
+                      } else {
+                        // Create a new single-day itinerary if none exists
+                        itineraryData = {
+                          days: [
+                            {
+                              date: new Date().toISOString().split("T")[0],
+                              activities: items.map((item) => ({
+                                time: item.time,
+                                title: item.title,
+                                duration: item.duration,
+                                location: item.location,
+                                description: item.description || "",
+                                type: item.type || "attraction",
+                              })),
+                            },
+                          ],
+                        };
+                      }
+
+                      // Save to database as public
+                      const { data, error } = await supabase
+                        .from("itineraries")
+                        .insert({
+                          user_id: userData.user.id,
+                          destination: destination.title,
+                          summary: `${items.length} activities in ${destination.title}`,
+                          total_activities: items.length,
+                          estimated_cost: destination.priceRange || "Varies",
+                          is_public: true,
+                          itinerary_data: itineraryData,
+                          criteria_id: null,
+                          share_status: "public",
+                        });
+
+                      if (error) throw error;
+
+                      toast({
+                        title: "Success",
+                        description: "Itinerary shared publicly",
+                      });
+
+                      setShowShareDialog(false);
+                    } catch (error) {
+                      console.error("Error sharing itinerary publicly:", error);
+                      toast({
+                        title: "Error",
+                        description: "Failed to share itinerary",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  <Globe className="h-8 w-8 text-gray-500" />
+                  <span className="font-medium">Public</span>
+                  <span className="text-xs text-muted-foreground truncate w-full">
+                    Visible to everyone
+                  </span>
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="py-4 space-y-4">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">
+                  Share this link with others:
+                </p>
+                <div className="flex items-center gap-2">
+                  <Input value={shareUrl} readOnly className="flex-1" />
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareUrl);
+                      setIsCopied(true);
+                      setTimeout(() => setIsCopied(false), 2000);
+                    }}
+                  >
+                    {isCopied ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Or send via email:</p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="email"
+                    placeholder="recipient@example.com"
+                    value={recipientEmail}
+                    onChange={(e) => setRecipientEmail(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    disabled={!recipientEmail || isSendingEmail}
+                    onClick={async () => {
+                      if (!recipientEmail) return;
+
+                      setIsSendingEmail(true);
+                      try {
+                        // In a real app, you would call an API endpoint to send the email
+                        // For now, we'll just simulate it with a delay
+                        await new Promise((resolve) =>
+                          setTimeout(resolve, 1000),
+                        );
+
+                        toast({
+                          title: "Email Sent",
+                          description: `Itinerary link sent to ${recipientEmail}`,
+                        });
+
+                        setRecipientEmail("");
+                      } catch (error) {
+                        toast({
+                          title: "Error",
+                          description: "Failed to send email",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setIsSendingEmail(false);
+                      }
+                    }}
+                  >
+                    {isSendingEmail ? (
+                      <span className="flex items-center gap-1">
+                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                        Sending...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        <Mail className="h-4 w-4" />
+                        Send
+                      </span>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              <Button
+                variant="ghost"
+                className="w-full mt-4"
+                onClick={() => {
+                  setShareUrl("");
+                  setRecipientEmail("");
+                  setIsCopied(false);
+                }}
+              >
+                Create Another Link
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Public/Private Dialog */}
       <Dialog
         open={showPublicPrivateDialog}
@@ -685,12 +1211,12 @@ const DailySchedule = ({
           </DialogHeader>
           <div className="py-4">
             <p className="mb-4">
-              Would you like to make this itinerary public or private?
+              Would you like to make this itinerary public, shared, or private?
             </p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <Button
                 variant="outline"
-                className="p-6 flex flex-col items-center justify-center gap-2"
+                className="p-4 h-auto flex flex-col items-center justify-center gap-2 text-center"
                 onClick={async () => {
                   try {
                     // Get current user
@@ -722,22 +1248,46 @@ const DailySchedule = ({
 
                     const destination = JSON.parse(storedDestination);
 
-                    // Create itinerary data structure
-                    const itineraryData = {
-                      days: [
-                        {
-                          date: new Date().toISOString().split("T")[0],
-                          activities: items.map((item) => ({
+                    // Get the current itinerary data from localStorage
+                    const storedItinerary =
+                      localStorage.getItem("generatedItinerary");
+                    let itineraryData;
+
+                    if (storedItinerary) {
+                      // Use the full multi-day itinerary if available
+                      itineraryData = JSON.parse(storedItinerary);
+
+                      // Update the current day's activities
+                      if (itineraryData.days && itineraryData.days.length > 0) {
+                        itineraryData.days[0].activities = items.map(
+                          (item) => ({
                             time: item.time,
                             title: item.title,
                             duration: item.duration,
                             location: item.location,
                             description: item.description || "",
                             type: item.type || "attraction",
-                          })),
-                        },
-                      ],
-                    };
+                          }),
+                        );
+                      }
+                    } else {
+                      // Create a new single-day itinerary if none exists
+                      itineraryData = {
+                        days: [
+                          {
+                            date: new Date().toISOString().split("T")[0],
+                            activities: items.map((item) => ({
+                              time: item.time,
+                              title: item.title,
+                              duration: item.duration,
+                              location: item.location,
+                              description: item.description || "",
+                              type: item.type || "attraction",
+                            })),
+                          },
+                        ],
+                      };
+                    }
 
                     // Save to database
                     const { data, error } = await supabase
@@ -751,6 +1301,7 @@ const DailySchedule = ({
                         is_public: false,
                         itinerary_data: itineraryData,
                         criteria_id: null,
+                        share_status: "private",
                       });
 
                     if (error) throw error;
@@ -777,14 +1328,14 @@ const DailySchedule = ({
               >
                 <Users className="h-8 w-8 text-gray-500" />
                 <span className="font-medium">Private</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground truncate w-full">
                   Only visible to you
                 </span>
               </Button>
 
               <Button
                 variant="outline"
-                className="p-6 flex flex-col items-center justify-center gap-2"
+                className="p-4 h-auto flex flex-col items-center justify-center gap-2 text-center"
                 onClick={async () => {
                   try {
                     // Get current user
@@ -816,22 +1367,169 @@ const DailySchedule = ({
 
                     const destination = JSON.parse(storedDestination);
 
-                    // Create itinerary data structure
-                    const itineraryData = {
-                      days: [
-                        {
-                          date: new Date().toISOString().split("T")[0],
-                          activities: items.map((item) => ({
+                    // Get the current itinerary data from localStorage
+                    const storedItinerary =
+                      localStorage.getItem("generatedItinerary");
+                    let itineraryData;
+
+                    if (storedItinerary) {
+                      // Use the full multi-day itinerary if available
+                      itineraryData = JSON.parse(storedItinerary);
+
+                      // Update the current day's activities
+                      if (itineraryData.days && itineraryData.days.length > 0) {
+                        itineraryData.days[0].activities = items.map(
+                          (item) => ({
                             time: item.time,
                             title: item.title,
                             duration: item.duration,
                             location: item.location,
                             description: item.description || "",
                             type: item.type || "attraction",
-                          })),
-                        },
-                      ],
-                    };
+                          }),
+                        );
+                      }
+                    } else {
+                      // Create a new single-day itinerary if none exists
+                      itineraryData = {
+                        days: [
+                          {
+                            date: new Date().toISOString().split("T")[0],
+                            activities: items.map((item) => ({
+                              time: item.time,
+                              title: item.title,
+                              duration: item.duration,
+                              location: item.location,
+                              description: item.description || "",
+                              type: item.type || "attraction",
+                            })),
+                          },
+                        ],
+                      };
+                    }
+
+                    // Generate a unique ID for the share URL
+                    const shareId = crypto.randomUUID();
+
+                    // Save to database
+                    const { data, error } = await supabase
+                      .from("itineraries")
+                      .insert({
+                        user_id: userData.user.id,
+                        destination: destination.title,
+                        summary: `${items.length} activities in ${destination.title}`,
+                        total_activities: items.length,
+                        estimated_cost: destination.priceRange || "Varies",
+                        is_public: false,
+                        itinerary_data: itineraryData,
+                        criteria_id: null,
+                        share_id: shareId,
+                        share_status: "shared",
+                      });
+
+                    if (error) throw error;
+
+                    toast({
+                      title: "Success",
+                      description: "Itinerary saved as shared with link",
+                    });
+
+                    // Reset change tracking
+                    setOriginalActivities([...items]);
+                    setHasChanges(false);
+                    setShowPublicPrivateDialog(false);
+                  } catch (error) {
+                    console.error("Error saving itinerary:", error);
+                    toast({
+                      title: "Error",
+                      description: "Failed to save itinerary",
+                      variant: "destructive",
+                    });
+                    setShowPublicPrivateDialog(false);
+                  }
+                }}
+              >
+                <Share2 className="h-8 w-8 text-gray-500" />
+                <span className="font-medium">Shared</span>
+                <span className="text-xs text-muted-foreground truncate w-full">
+                  Accessible with link only
+                </span>
+              </Button>
+
+              <Button
+                variant="outline"
+                className="p-4 h-auto flex flex-col items-center justify-center gap-2 text-center"
+                onClick={async () => {
+                  try {
+                    // Get current user
+                    const { data: userData } = await supabase.auth.getUser();
+                    if (!userData?.user) {
+                      toast({
+                        title: "Error",
+                        description:
+                          "You must be signed in to save an itinerary",
+                        variant: "destructive",
+                      });
+                      setShowPublicPrivateDialog(false);
+                      return;
+                    }
+
+                    // Get the current destination from localStorage
+                    const storedDestination = localStorage.getItem(
+                      "selectedDestination",
+                    );
+                    if (!storedDestination) {
+                      toast({
+                        title: "Error",
+                        description: "No destination found",
+                        variant: "destructive",
+                      });
+                      setShowPublicPrivateDialog(false);
+                      return;
+                    }
+
+                    const destination = JSON.parse(storedDestination);
+
+                    // Get the current itinerary data from localStorage
+                    const storedItinerary =
+                      localStorage.getItem("generatedItinerary");
+                    let itineraryData;
+
+                    if (storedItinerary) {
+                      // Use the full multi-day itinerary if available
+                      itineraryData = JSON.parse(storedItinerary);
+
+                      // Update the current day's activities
+                      if (itineraryData.days && itineraryData.days.length > 0) {
+                        itineraryData.days[0].activities = items.map(
+                          (item) => ({
+                            time: item.time,
+                            title: item.title,
+                            duration: item.duration,
+                            location: item.location,
+                            description: item.description || "",
+                            type: item.type || "attraction",
+                          }),
+                        );
+                      }
+                    } else {
+                      // Create a new single-day itinerary if none exists
+                      itineraryData = {
+                        days: [
+                          {
+                            date: new Date().toISOString().split("T")[0],
+                            activities: items.map((item) => ({
+                              time: item.time,
+                              title: item.title,
+                              duration: item.duration,
+                              location: item.location,
+                              description: item.description || "",
+                              type: item.type || "attraction",
+                            })),
+                          },
+                        ],
+                      };
+                    }
 
                     // Save to database
                     const { data, error } = await supabase
@@ -845,6 +1543,7 @@ const DailySchedule = ({
                         is_public: true,
                         itinerary_data: itineraryData,
                         criteria_id: null,
+                        share_status: "public",
                       });
 
                     if (error) throw error;
@@ -871,7 +1570,7 @@ const DailySchedule = ({
               >
                 <Globe className="h-8 w-8 text-gray-500" />
                 <span className="font-medium">Public</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground truncate w-full">
                   Visible to everyone
                 </span>
               </Button>

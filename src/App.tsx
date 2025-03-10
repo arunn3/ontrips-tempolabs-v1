@@ -18,6 +18,7 @@ const OnboardingFlow = lazy(
 const AccountSettings = lazy(
   () => import("./components/settings/AccountSettings"),
 );
+const SharedItinerary = lazy(() => import("./components/SharedItinerary"));
 
 function App() {
   return (
@@ -50,6 +51,14 @@ function App() {
                 <AccountSettings />
               </MagazineLayout>
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/shared-itinerary/:shareId"
+          element={
+            <MagazineLayout>
+              <SharedItinerary />
+            </MagazineLayout>
           }
         />
         <Route path="*" element={<Navigate to="/" />} />

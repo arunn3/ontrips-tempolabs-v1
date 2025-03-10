@@ -194,6 +194,17 @@ export async function generateItinerary(
   startDate: Date,
   duration: number,
 ): Promise<GeneratedItinerary> {
+  // Ensure startDate is a valid Date object
+  if (!(startDate instanceof Date) || isNaN(startDate.getTime())) {
+    console.log("Invalid startDate, using current date", startDate);
+    startDate = new Date();
+  }
+
+  // Ensure duration is a valid number
+  if (typeof duration !== "number" || isNaN(duration) || duration < 1) {
+    console.log("Invalid duration, using default of 3 days", duration);
+    duration = 3;
+  }
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 

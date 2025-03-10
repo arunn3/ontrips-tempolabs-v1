@@ -1248,13 +1248,29 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     // Extract start date from existing itinerary
                     const startDateStr =
                       selectedDestination.itinerary.days[0].date;
-                    const startDate = new Date(startDateStr);
+                    let startDate;
+                    try {
+                      startDate = new Date(startDateStr);
+                      // Check if date is valid
+                      if (isNaN(startDate.getTime())) {
+                        console.error("Invalid date string:", startDateStr);
+                        startDate = new Date(); // Fallback to current date
+                      }
+                    } catch (error) {
+                      console.error("Error parsing date:", error);
+                      startDate = new Date(); // Fallback to current date
+                    }
 
                     // Extract duration from existing itinerary
-                    const duration = selectedDestination.itinerary.days.length;
+                    const duration =
+                      selectedDestination.itinerary.days.length || 3; // Fallback to 3 days if length is 0
 
                     // Generate new itinerary
                     const { generateItinerary } = await import("../lib/gemini");
+
+                    // Add a small delay to ensure API rate limits aren't hit
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+
                     const newItinerary = await generateItinerary(
                       selectedDestination.title,
                       selections,
