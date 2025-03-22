@@ -35,10 +35,12 @@ serve(async (req) => {
     );
 
     // Query the itineraries table directly with the service role
+    // Make sure to only get itineraries with share_status = 'shared'
     const { data, error } = await supabaseAdmin
       .from("itineraries")
       .select("*")
-      .eq("share_id", share_id);
+      .eq("share_id", share_id)
+      .eq("share_status", "shared");
 
     if (error) {
       console.error("Error fetching itinerary:", error);

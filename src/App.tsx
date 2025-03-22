@@ -1,14 +1,13 @@
 import { Suspense, lazy } from "react";
-import { useRoutes, Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useRoutes } from "react-router-dom";
 import Home from "./components/home";
 import routes from "tempo-routes";
 import MagazineLayout from "./components/MagazineLayout";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import SharedItinerary from "./components/SharedItinerary";
 
 const AuthCallback = lazy(() => import("./components/auth/AuthCallback"));
-const DestinationGallery = lazy(
-  () => import("./components/DestinationGallery"),
-);
+import DestinationGallery from "./components/DestinationGallery";
 const DestinationDetails = lazy(
   () => import("./components/DestinationDetails"),
 );
@@ -18,13 +17,26 @@ const OnboardingFlow = lazy(
 const AccountSettings = lazy(
   () => import("./components/settings/AccountSettings"),
 );
-const SharedItinerary = lazy(() => import("./components/SharedItinerary"));
 
 function App() {
+  // Define Tempo routes using useRoutes if in Tempo environment
+  const tempoRoutesElement =
+    import.meta.env.VITE_TEMPO === "true" ? useRoutes(routes) : null;
+
   return (
-    <Suspense fallback={<p>Loading...</p>}>
+    <>
+      {/* Render Tempo routes first */}
+      {tempoRoutesElement}
+
       <Routes>
-        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route
+          path="/auth/callback"
+          element={
+            <Suspense fallback={<p>Loading auth callback...</p>}>
+              <AuthCallback />
+            </Suspense>
+          }
+        />
         <Route
           path="/"
           element={
@@ -37,18 +49,29 @@ function App() {
           path="/destination/:id"
           element={
             <MagazineLayout>
-              <DestinationDetails />
+              <Suspense fallback={<p>Loading destination details...</p>}>
+                <DestinationDetails />
+              </Suspense>
             </MagazineLayout>
           }
         />
         <Route path="/planner" element={<Home />} />
-        <Route path="/onboarding" element={<OnboardingFlow />} />
+        <Route
+          path="/onboarding"
+          element={
+            <Suspense fallback={<p>Loading onboarding...</p>}>
+              <OnboardingFlow />
+            </Suspense>
+          }
+        />
         <Route
           path="/settings"
           element={
             <ProtectedRoute>
               <MagazineLayout>
-                <AccountSettings />
+                <Suspense fallback={<p>Loading settings...</p>}>
+                  <AccountSettings />
+                </Suspense>
               </MagazineLayout>
             </ProtectedRoute>
           }
@@ -61,10 +84,13 @@ function App() {
             </MagazineLayout>
           }
         />
+        {/* Add explicit route for tempo routes */}
+        {import.meta.env.VITE_TEMPO === "true" && (
+          <Route path="/tempobook/*" element={<div />} />
+        )}
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
-      {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
-    </Suspense>
+    </>
   );
 }
 

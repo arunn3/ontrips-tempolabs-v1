@@ -13,8 +13,11 @@ const ItineraryContext = createContext<ItineraryContextType | undefined>(
   undefined,
 );
 
-export const ItineraryProvider: React.FC<{ children: React.ReactNode }> = ({
+// Using function declaration for consistent component exports
+export const ItineraryProvider = ({
   children,
+}: {
+  children: React.ReactNode;
 }) => {
   const [itinerary, setItinerary] = useState<any | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -32,22 +35,23 @@ export const ItineraryProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
+  const contextValue = {
+    itinerary,
+    setItinerary,
+    isGenerating,
+    setIsGenerating,
+    generationProgress,
+    setGenerationProgress,
+  };
+
   return (
-    <ItineraryContext.Provider
-      value={{
-        itinerary,
-        setItinerary,
-        isGenerating,
-        setIsGenerating,
-        generationProgress,
-        setGenerationProgress,
-      }}
-    >
+    <ItineraryContext.Provider value={contextValue}>
       {children}
     </ItineraryContext.Provider>
   );
 };
 
+// Using arrow function for consistent hook exports
 export const useItinerary = () => {
   const context = useContext(ItineraryContext);
   if (context === undefined) {

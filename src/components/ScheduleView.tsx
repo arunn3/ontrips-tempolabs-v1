@@ -87,6 +87,62 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
     ? contextGenerationProgress
     : localGenerationProgress;
 
+  // Define loadStoredItinerary function outside of useEffect
+  const loadStoredItinerary = async () => {
+    try {
+      const storedItinerary = localStorage.getItem("generatedItinerary");
+      if (storedItinerary) {
+        const parsedItinerary = JSON.parse(storedItinerary);
+        console.log("Found stored itinerary:", parsedItinerary);
+
+        // Store all days from the itinerary
+        if (parsedItinerary.days && parsedItinerary.days.length > 0) {
+          setItineraryDays(parsedItinerary.days);
+
+          // Import location service
+          const locationServiceModule = await import("../lib/locationService");
+
+          // Convert the first day's activities to the format expected by DailySchedule
+          const firstDay = parsedItinerary.days[0];
+          const convertedActivities = await Promise.all(
+            firstDay.activities.map(async (activity, index) => {
+              // Determine coordinates
+              let coordinates;
+              if (activity.lat && activity.long) {
+                coordinates = {
+                  lat: parseFloat(activity.lat),
+                  lng: parseFloat(activity.long),
+                };
+              } else {
+                // Query the database for coordinates
+                const locationText = activity.location || activity.title || "";
+                coordinates =
+                  await locationServiceModule.getCoordinatesForLocation(
+                    locationText,
+                  );
+              }
+
+              return {
+                id: index.toString(),
+                time: activity.time,
+                title: activity.title,
+                duration: activity.duration,
+                location: activity.location,
+                description: activity.description,
+                type: activity.type,
+                coordinates: coordinates,
+                city: activity.city || "",
+              };
+            }),
+          );
+          setActivitiesList(convertedActivities);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading itinerary from localStorage:", error);
+    }
+  };
+
   React.useEffect(() => {
     // Define the event handler function
     const handleItineraryUpdate = (event: any) => {
@@ -167,68 +223,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
             processActivities();
           }
         } else {
-          // Use the function directly instead of the reference
-          const loadStoredItinerary = async () => {
-            try {
-              const storedItinerary =
-                localStorage.getItem("generatedItinerary");
-              if (storedItinerary) {
-                const parsedItinerary = JSON.parse(storedItinerary);
-                console.log("Found stored itinerary:", parsedItinerary);
-
-                // Store all days from the itinerary
-                if (parsedItinerary.days && parsedItinerary.days.length > 0) {
-                  setItineraryDays(parsedItinerary.days);
-
-                  // Import location service
-                  const locationServiceModule = await import(
-                    "../lib/locationService"
-                  );
-
-                  // Convert the first day's activities to the format expected by DailySchedule
-                  const firstDay = parsedItinerary.days[0];
-                  const convertedActivities = await Promise.all(
-                    firstDay.activities.map(async (activity, index) => {
-                      // Determine coordinates
-                      let coordinates;
-                      if (activity.lat && activity.long) {
-                        coordinates = {
-                          lat: parseFloat(activity.lat),
-                          lng: parseFloat(activity.long),
-                        };
-                      } else {
-                        // Query the database for coordinates
-                        const locationText =
-                          activity.location || activity.title || "";
-                        coordinates =
-                          await locationServiceModule.getCoordinatesForLocation(
-                            locationText,
-                          );
-                      }
-
-                      return {
-                        id: index.toString(),
-                        time: activity.time,
-                        title: activity.title,
-                        duration: activity.duration,
-                        location: activity.location,
-                        description: activity.description,
-                        type: activity.type,
-                        coordinates: coordinates,
-                        city: activity.city || "",
-                      };
-                    }),
-                  );
-                  setActivitiesList(convertedActivities);
-                }
-              }
-            } catch (error) {
-              console.error(
-                "Error loading itinerary from localStorage:",
-                error,
-              );
-            }
-          };
+          // Use the loadStoredItinerary function defined above
           loadStoredItinerary();
         }
       } else if (event.detail.status === "error") {
@@ -298,63 +293,6 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
         }
       } else {
         // Default case - just load the itinerary
-        const loadStoredItinerary = async () => {
-          try {
-            const storedItinerary = localStorage.getItem("generatedItinerary");
-            if (storedItinerary) {
-              const parsedItinerary = JSON.parse(storedItinerary);
-              console.log("Found stored itinerary:", parsedItinerary);
-
-              // Store all days from the itinerary
-              if (parsedItinerary.days && parsedItinerary.days.length > 0) {
-                setItineraryDays(parsedItinerary.days);
-
-                // Import location service
-                const locationServiceModule = await import(
-                  "../lib/locationService"
-                );
-
-                // Convert the first day's activities to the format expected by DailySchedule
-                const firstDay = parsedItinerary.days[0];
-                const convertedActivities = await Promise.all(
-                  firstDay.activities.map(async (activity, index) => {
-                    // Determine coordinates
-                    let coordinates;
-                    if (activity.lat && activity.long) {
-                      coordinates = {
-                        lat: parseFloat(activity.lat),
-                        lng: parseFloat(activity.long),
-                      };
-                    } else {
-                      // Query the database for coordinates
-                      const locationText =
-                        activity.location || activity.title || "";
-                      coordinates =
-                        await locationServiceModule.getCoordinatesForLocation(
-                          locationText,
-                        );
-                    }
-
-                    return {
-                      id: index.toString(),
-                      time: activity.time,
-                      title: activity.title,
-                      duration: activity.duration,
-                      location: activity.location,
-                      description: activity.description,
-                      type: activity.type,
-                      coordinates: coordinates,
-                      city: activity.city || "",
-                    };
-                  }),
-                );
-                setActivitiesList(convertedActivities);
-              }
-            }
-          } catch (error) {
-            console.error("Error loading itinerary from localStorage:", error);
-          }
-        };
         loadStoredItinerary();
       }
     };
@@ -370,63 +308,24 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
 
   // This useEffect is for initial load and URL changes
   React.useEffect(() => {
-    const loadStoredItinerary = async () => {
-      try {
-        const storedItinerary = localStorage.getItem("generatedItinerary");
-        if (storedItinerary) {
-          const parsedItinerary = JSON.parse(storedItinerary);
-          console.log("Found stored itinerary:", parsedItinerary);
-
-          // Store all days from the itinerary
-          if (parsedItinerary.days && parsedItinerary.days.length > 0) {
-            setItineraryDays(parsedItinerary.days);
-
-            // Import location service
-            const locationServiceModule = await import(
-              "../lib/locationService"
-            );
-
-            // Convert the first day's activities to the format expected by DailySchedule
-            const firstDay = parsedItinerary.days[0];
-            const convertedActivities = await Promise.all(
-              firstDay.activities.map(async (activity, index) => {
-                // Determine coordinates
-                let coordinates;
-                if (activity.lat && activity.long) {
-                  coordinates = {
-                    lat: parseFloat(activity.lat),
-                    lng: parseFloat(activity.long),
-                  };
-                } else {
-                  // Query the database for coordinates
-                  const locationText =
-                    activity.location || activity.title || "";
-                  coordinates =
-                    await locationServiceModule.getCoordinatesForLocation(
-                      locationText,
-                    );
-                }
-
-                return {
-                  id: index.toString(),
-                  time: activity.time,
-                  title: activity.title,
-                  duration: activity.duration,
-                  location: activity.location,
-                  description: activity.description,
-                  type: activity.type,
-                  coordinates: coordinates,
-                  city: activity.city || "",
-                };
-              }),
-            );
-            setActivitiesList(convertedActivities);
-          }
-        }
-      } catch (error) {
-        console.error("Error loading itinerary from localStorage:", error);
+    // Check for itineraryUpdate flag in localStorage every second
+    const checkForUpdates = setInterval(() => {
+      const itineraryUpdateFlag = localStorage.getItem("itineraryUpdate");
+      if (itineraryUpdateFlag) {
+        console.log("Detected itinerary update flag, reloading itinerary");
+        loadStoredItinerary();
+        // Clear the flag after processing
+        localStorage.removeItem("itineraryUpdate");
       }
-    };
+    }, 1000);
+
+    // Cleanup interval
+    return () => clearInterval(checkForUpdates);
+  }, []);
+
+  // Additional useEffect for initial load and event listeners
+  React.useEffect(() => {
+    // Call the loadStoredItinerary function defined above
     loadStoredItinerary();
 
     // Also check for the itineraryUpdate flag in localStorage

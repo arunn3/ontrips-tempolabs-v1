@@ -39,42 +39,249 @@ interface Itinerary {
 }
 
 const SharedItinerary = () => {
+  // Function to save changes to the database
+  const saveChanges = async (
+    newEditedActivities: Record<string, Activity[]>,
+  ) => {
+    if (!itinerary) return;
+
+    try {
+      // Create a copy of the itinerary data
+      const updatedItineraryData = { ...itinerary.itinerary_data };
+
+      // Update the activities for each day
+      updatedItineraryData.days = updatedItineraryData.days.map(
+        (day, index) => ({
+          ...day,
+          activities: newEditedActivities[index.toString()] || day.activities,
+        }),
+      );
+
+      console.log("Saving changes to database for itinerary ID:", itinerary.id);
+      console.log("Updated itinerary data:", updatedItineraryData);
+
+      // Update the itinerary in the database
+      const { data, error } = await supabase
+        .from("itineraries")
+        .update({ itinerary_data: updatedItineraryData })
+        .eq("id", itinerary.id)
+        .select();
+
+      if (error) throw error;
+
+      console.log("Database update response:", data);
+
+      // Update local state with a completely new object to force re-render
+      const updatedItinerary = {
+        ...itinerary,
+        itinerary_data: updatedItineraryData,
+      };
+      setItinerary(updatedItinerary);
+
+      // Dispatch event to update planner view
+      const updateEvent = new CustomEvent("sharedItineraryUpdate", {
+        detail: {
+          itinerary: updatedItineraryData,
+          timestamp: Date.now(),
+        },
+      });
+      window.dispatchEvent(updateEvent);
+
+      // Also update localStorage directly to ensure consistency
+      localStorage.setItem(
+        "generatedItinerary",
+        JSON.stringify(updatedItineraryData),
+      );
+      localStorage.setItem("itineraryUpdate", Date.now().toString());
+
+      toast({
+        title: "Changes saved",
+        description: "Your changes have been saved successfully",
+      });
+    } catch (error) {
+      console.error("Error saving changes:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save changes",
+        variant: "destructive",
+      });
+    }
+  };
   const { shareId } = useParams<{ shareId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [itinerary, setItinerary] = useState<Itinerary | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEditable, setIsEditable] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedActivities, setEditedActivities] = useState<
+    Record<string, Activity[]>
+  >({});
+
+  // Add debug logging for component state
+  useEffect(() => {
+    console.log("Component state changed:", {
+      isLoading,
+      error,
+      itinerary: itinerary
+        ? `${itinerary.id} with ${itinerary.itinerary_data?.days?.length} days`
+        : null,
+      shareId,
+    });
+  }, [isLoading, error, itinerary, shareId]);
 
   useEffect(() => {
+    let isMounted = true;
+    console.log("Starting fetchItinerary effect with shareId:", shareId);
+
+    // Set loading state at the beginning of the effect
+    setIsLoading(true);
+    console.log("Set isLoading to true at start of effect");
+
     const fetchItinerary = async () => {
       if (!shareId) {
-        setError("No share ID provided");
-        setIsLoading(false);
+        if (isMounted) {
+          setError("No share ID provided");
+          setIsLoading(false);
+        }
         return;
       }
 
       try {
         console.log("Fetching itinerary with share_id:", shareId);
-        // Fetch the itinerary by share_id
-        const { data, error } = await supabase
-          .from("itineraries")
-          .select("*")
-          .eq("share_id", shareId);
 
-        console.log("Fetch result:", { data, error });
+        // Skip edge function due to CORS issues
+        let itineraryData = null;
 
-        if (error) {
-          throw new Error("Failed to fetch itinerary: " + error.message);
+        // If edge function failed, try direct query
+        if (!itineraryData) {
+          // Fetch the itinerary by share_id
+          const { data, error } = await supabase
+            .from("itineraries")
+            .select("*")
+            .eq("share_id", shareId);
+
+          console.log("Direct query result:", { data, error });
+
+          if (error) {
+            throw new Error("Failed to fetch itinerary: " + error.message);
+          }
+
+          if (!data || data.length === 0) {
+            console.log("Throwing Itin Not Found exception 1");
+            throw new Error("Itinerary not found");
+          }
+
+          // Use the first matching itinerary
+          itineraryData = data[0];
+          console.log("Found itinerary data:", itineraryData);
+          console.log("FOUND ITINERARY DATA ID:", itineraryData.id);
         }
 
-        if (!data || data.length === 0) {
+        if (!itineraryData) {
+          console.log("Throwing Itin Not Found exception 2");
           throw new Error("Itinerary not found");
         }
 
-        // Use the first matching itinerary
-        const itineraryData = data[0];
+        // Check if itinerary is editable
+        setIsEditable(itineraryData.is_editable || false);
 
+        // Initialize edited activities with the current activities
+        if (itineraryData.itinerary_data && itineraryData.itinerary_data.days) {
+          const initialEditedActivities: Record<string, Activity[]> = {};
+          itineraryData.itinerary_data.days.forEach(
+            (day: ItineraryDay, index: number) => {
+              initialEditedActivities[index.toString()] = [...day.activities];
+            },
+          );
+          setEditedActivities(initialEditedActivities);
+        }
+        console.log("Setting up realtime subscription....");
+        // Set up realtime subscription if itinerary is editable
+        let channel;
+        if (itineraryData.is_editable) {
+          try {
+            channel = supabase
+              .channel(`itinerary-${itineraryData.id}`)
+              .on(
+                "postgres_changes",
+                {
+                  event: "UPDATE",
+                  schema: "public",
+                  table: "itineraries",
+                  filter: `id=eq.${itineraryData.id}`,
+                },
+                (payload) => {
+                  console.log("Itinerary updated via realtime:", payload);
+                  // Update the itinerary with the new data
+                  if (payload.new && payload.new.itinerary_data) {
+                    // Force a re-render by creating a completely new object
+                    const updatedItinerary = {
+                      ...payload.new,
+                      user_name: itineraryData.user_name, // Preserve the user name
+                    };
+
+                    console.log(
+                      "Setting updated itinerary from realtime:",
+                      updatedItinerary,
+                    );
+                    setItinerary(updatedItinerary);
+
+                    // Update edited activities
+                    if (payload.new.itinerary_data.days) {
+                      const updatedEditedActivities: Record<
+                        string,
+                        Activity[]
+                      > = {};
+                      payload.new.itinerary_data.days.forEach(
+                        (day: ItineraryDay, index: number) => {
+                          updatedEditedActivities[index.toString()] = [
+                            ...day.activities,
+                          ];
+                        },
+                      );
+                      setEditedActivities(updatedEditedActivities);
+
+                      // Force UI update
+                      setTimeout(() => {
+                        console.log("Forcing UI update after realtime change");
+                        setIsEditing((isEditing) => !isEditing);
+                        setIsEditing((isEditing) => !isEditing);
+
+                        // Dispatch event to update planner view
+                        const updateEvent = new CustomEvent(
+                          "sharedItineraryUpdate",
+                          {
+                            detail: {
+                              itinerary: payload.new.itinerary_data,
+                              timestamp: Date.now(),
+                            },
+                          },
+                        );
+                        window.dispatchEvent(updateEvent);
+
+                        // Also update localStorage directly to ensure consistency
+                        localStorage.setItem(
+                          "generatedItinerary",
+                          JSON.stringify(payload.new.itinerary_data),
+                        );
+                        localStorage.setItem(
+                          "itineraryUpdate",
+                          Date.now().toString(),
+                        );
+                      }, 100);
+                    }
+                  }
+                },
+              )
+              .subscribe();
+            console.log("Realtime subscription set up successfully");
+          } catch (subError) {
+            console.error("Error setting up realtime subscription:", subError);
+          }
+        }
+        console.log("Fetching User Data....");
         // Fetch user name if available
         if (itineraryData.user_id) {
           try {
@@ -96,16 +303,34 @@ const SharedItinerary = () => {
           }
         }
 
+        // Ensure we set the itinerary data properly
+        console.log("SETTING ITINERARY DATA NOW:", itineraryData.id);
         setItinerary(itineraryData);
+        setIsLoading(false);
+        console.log("Set itinerary data in state and turned off loading");
       } catch (err: any) {
         console.error("Error fetching shared itinerary:", err);
-        setError(err.message || "Failed to load itinerary");
-      } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setError(err.message || "Failed to load itinerary");
+          console.log("Setting isLoading to false after error");
+          setIsLoading(false);
+        }
       }
+
+      // Clean up subscription on unmount if channel was created
+      return () => {
+        if (channel) {
+          console.log("Removing channel on cleanup");
+          supabase.removeChannel(channel);
+        }
+      };
     };
 
     fetchItinerary();
+    console.log("After fetchItinerary call");
+    return () => {
+      isMounted = false;
+    };
   }, [shareId]);
 
   const handleUseItinerary = () => {
@@ -152,22 +377,27 @@ const SharedItinerary = () => {
     }
   };
 
+  // Loading state - add a console.log to debug
+  console.log("Render state:", {
+    isLoading,
+    error,
+    itinerary: itinerary ? "present" : null,
+    shareId,
+  });
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-12">
-        <div className="animate-pulse space-y-8">
-          <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
-          <div className="space-y-4">
-            <div className="h-6 bg-gray-200 rounded w-1/4"></div>
-            <div className="h-4 bg-gray-200 rounded w-full"></div>
-            <div className="h-4 bg-gray-200 rounded w-full"></div>
-          </div>
-        </div>
+      <div className="container mx-auto px-4 py-12 text-center">
+        <h2 className="text-2xl font-bold mb-4">Loading itinerary...</h2>
+        <p className="text-muted-foreground mb-6">
+          Please wait while we retrieve the shared itinerary.
+        </p>
+        <Button onClick={() => navigate("/")}>Back to Home</Button>
       </div>
     );
   }
 
+  // Show error if we have an explicit error or if loading is complete but no itinerary was found
+  console.log("Error or Itinerary?", error, itinerary);
   if (error || !itinerary) {
     return (
       <div className="container mx-auto px-4 py-12 text-center">
@@ -206,9 +436,17 @@ const SharedItinerary = () => {
               </div>
             )}
           </div>
-          <Button className="mt-4 md:mt-0" onClick={handleUseItinerary}>
-            Use This Itinerary
-          </Button>
+          <div className="flex gap-2 mt-4 md:mt-0">
+            {isEditable && (
+              <Button
+                variant={isEditing ? "default" : "outline"}
+                onClick={() => setIsEditing(!isEditing)}
+              >
+                {isEditing ? "Save Changes" : "Edit Itinerary"}
+              </Button>
+            )}
+            <Button onClick={handleUseItinerary}>Use This Itinerary</Button>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-4 mb-6">
@@ -251,7 +489,9 @@ const SharedItinerary = () => {
                         {actIndex + 1}
                       </span>
                     </div>
-                    <div className="bg-white p-4 rounded-lg border hover:border-blue-200 transition-colors">
+                    <div
+                      className={`bg-white p-4 rounded-lg border ${isEditing ? "border-blue-300" : "hover:border-blue-200"} transition-colors`}
+                    >
                       <div className="flex items-center gap-2 mb-1">
                         <Clock className="w-4 h-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
@@ -279,6 +519,37 @@ const SharedItinerary = () => {
                           {activity.description}
                         </p>
                       )}
+
+                      {isEditing && (
+                        <div className="mt-2 pt-2 border-t flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Edit activity logic
+                              const dayActivities = [
+                                ...editedActivities[dayIndex.toString()],
+                              ];
+                              // Remove this activity
+                              dayActivities.splice(actIndex, 1);
+
+                              // Update edited activities
+                              const newEditedActivities = {
+                                ...editedActivities,
+                              };
+                              newEditedActivities[dayIndex.toString()] =
+                                dayActivities;
+                              setEditedActivities(newEditedActivities);
+
+                              // Save changes to database
+                              saveChanges(newEditedActivities);
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -290,8 +561,37 @@ const SharedItinerary = () => {
         <div className="mt-6 pt-6 border-t flex justify-between items-center">
           <p className="text-sm text-muted-foreground">
             Shared on {format(new Date(itinerary.created_at), "MMMM d, yyyy")}
+            {isEditable && " • Collaborative editing enabled"}
           </p>
-          <Button onClick={handleUseItinerary}>Use This Itinerary</Button>
+          <div className="flex gap-2">
+            {isEditing && (
+              <Button
+                onClick={() => {
+                  setIsEditing(false);
+                  // Reset edited activities to original
+                  if (
+                    itinerary.itinerary_data &&
+                    itinerary.itinerary_data.days
+                  ) {
+                    const resetEditedActivities: Record<string, Activity[]> =
+                      {};
+                    itinerary.itinerary_data.days.forEach(
+                      (day: ItineraryDay, index: number) => {
+                        resetEditedActivities[index.toString()] = [
+                          ...day.activities,
+                        ];
+                      },
+                    );
+                    setEditedActivities(resetEditedActivities);
+                  }
+                }}
+                variant="outline"
+              >
+                Cancel
+              </Button>
+            )}
+            <Button onClick={handleUseItinerary}>Use This Itinerary</Button>
+          </div>
         </div>
       </div>
     </div>

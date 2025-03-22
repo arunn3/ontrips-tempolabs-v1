@@ -17,21 +17,31 @@ const basename = import.meta.env.BASE_URL;
 import { createProfilesTable } from "./lib/createProfilesTable";
 import { createSearchCriteriaTable } from "./lib/createSearchCriteriaTable";
 
+// Import the addEditableColumn function
+import { addEditableColumn } from "./lib/addEditableColumn";
+
 // Initialize database tables
-Promise.all([createProfilesTable(), createSearchCriteriaTable()]).then(
-  ([profilesSuccess, searchCriteriaSuccess]) => {
-    console.log(
-      profilesSuccess
-        ? "Profiles table check complete"
-        : "Profiles table check failed",
-    );
-    console.log(
-      searchCriteriaSuccess
-        ? "Search criteria table check complete"
-        : "Search criteria table check failed",
-    );
-  },
-);
+Promise.all([
+  createProfilesTable(),
+  createSearchCriteriaTable(),
+  addEditableColumn(),
+]).then(([profilesSuccess, searchCriteriaSuccess, editableColumnSuccess]) => {
+  console.log(
+    profilesSuccess
+      ? "Profiles table check complete"
+      : "Profiles table check failed",
+  );
+  console.log(
+    searchCriteriaSuccess
+      ? "Search criteria table check complete"
+      : "Search criteria table check failed",
+  );
+  console.log(
+    editableColumnSuccess
+      ? "Editable column added successfully"
+      : "Editable column check failed",
+  );
+});
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

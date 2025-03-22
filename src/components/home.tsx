@@ -31,8 +31,52 @@ const Home = ({ onMenuClick = () => {} }: HomeProps) => {
     // Add event listener for window resize
     window.addEventListener("resize", checkIfMobile);
 
+    // Set up listener for shared itinerary updates
+    const handleSharedItineraryUpdate = (event: any) => {
+      if (event.detail && event.detail.itinerary) {
+        console.log(
+          "Home received shared itinerary update:",
+          event.detail.itinerary,
+        );
+
+        // Update localStorage to ensure consistency
+        localStorage.setItem(
+          "generatedItinerary",
+          JSON.stringify(event.detail.itinerary),
+        );
+        localStorage.setItem("itineraryUpdate", Date.now().toString());
+
+        // Dispatch an itineraryUpdated event to notify ScheduleView
+        const updateEvent = new CustomEvent("itineraryUpdated", {
+          detail: {
+            status: "complete",
+            itinerary: event.detail.itinerary,
+            timestamp: event.detail.timestamp || Date.now(),
+          },
+        });
+        window.dispatchEvent(updateEvent);
+
+        // Force a reload of the schedule view
+        const reloadEvent = new CustomEvent("itineraryChanged", {
+          detail: { timestamp: Date.now() },
+        });
+        document.dispatchEvent(reloadEvent);
+      }
+    };
+
+    window.addEventListener(
+      "sharedItineraryUpdate",
+      handleSharedItineraryUpdate,
+    );
+
     // Cleanup
-    return () => window.removeEventListener("resize", checkIfMobile);
+    return () => {
+      window.removeEventListener("resize", checkIfMobile);
+      window.removeEventListener(
+        "sharedItineraryUpdate",
+        handleSharedItineraryUpdate,
+      );
+    };
   }, []);
 
   return (

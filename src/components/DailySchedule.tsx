@@ -21,6 +21,8 @@ import {
   Copy,
   Mail,
   Check,
+  Edit,
+  Lock,
 } from "lucide-react";
 import { motion, Reorder } from "framer-motion";
 import { Badge } from "./ui/badge";
@@ -203,6 +205,7 @@ const DailySchedule = ({
   const [originalActivities, setOriginalActivities] = React.useState<
     Activity[]
   >([]);
+  const [isEditable, setIsEditable] = React.useState(false);
   const { toast } = useToast();
 
   React.useEffect(() => {
@@ -513,7 +516,7 @@ const DailySchedule = ({
             className="space-y-1 pb-1"
           >
             {sortedActivities.map((activity, index) => (
-              <React.Fragment key={activity.id}>
+              <div key={activity.id} className="space-y-1">
                 {index > 0 && (
                   <div
                     key={`add-button-${index}`}
@@ -670,7 +673,7 @@ const DailySchedule = ({
                     </Card>
                   </motion.div>
                 </Reorder.Item>
-              </React.Fragment>
+              </div>
             ))}
 
             {/* Add final button at the end */}
@@ -704,7 +707,8 @@ const DailySchedule = ({
               <p className="mb-4">
                 How would you like to share this itinerary?
               </p>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <h3 className="text-sm font-medium col-span-2">Share Type</h3>
                 <Button
                   variant="outline"
                   className="p-4 h-auto flex flex-col items-center justify-center gap-2 text-center"
@@ -800,6 +804,7 @@ const DailySchedule = ({
                           criteria_id: null,
                           share_id: shareId,
                           share_status: "shared",
+                          is_editable: false,
                         });
 
                       if (error) throw error;
@@ -825,7 +830,7 @@ const DailySchedule = ({
 
                       toast({
                         title: "Success",
-                        description: "Private share link created",
+                        description: "Read-only share link created",
                       });
                     } catch (error) {
                       console.error("Error creating share link:", error);
@@ -837,10 +842,10 @@ const DailySchedule = ({
                     }
                   }}
                 >
-                  <Users className="h-8 w-8 text-gray-500" />
-                  <span className="font-medium">Private Link</span>
+                  <Lock className="h-8 w-8 text-gray-500" />
+                  <span className="font-medium">Read-Only Link</span>
                   <span className="text-xs text-muted-foreground truncate w-full">
-                    Only accessible with the link
+                    Viewers can't edit the itinerary
                   </span>
                 </Button>
 
@@ -939,6 +944,7 @@ const DailySchedule = ({
                           criteria_id: null,
                           share_id: shareId,
                           share_status: "shared",
+                          is_editable: true,
                         });
 
                       if (error) throw error;
@@ -964,7 +970,7 @@ const DailySchedule = ({
 
                       toast({
                         title: "Success",
-                        description: "Shared link created",
+                        description: "Collaborative editing link created",
                       });
                     } catch (error) {
                       console.error("Error creating share link:", error);
@@ -976,13 +982,15 @@ const DailySchedule = ({
                     }
                   }}
                 >
-                  <Share2 className="h-8 w-8 text-gray-500" />
-                  <span className="font-medium">Shared Link</span>
+                  <Edit className="h-8 w-8 text-gray-500" />
+                  <span className="font-medium">Editable Link</span>
                   <span className="text-xs text-muted-foreground truncate w-full">
-                    Accessible with link only
+                    Collaborators can edit in realtime
                   </span>
                 </Button>
-
+              </div>
+              <div className="grid grid-cols-1 gap-4 mb-4">
+                <h3 className="text-sm font-medium">Visibility</h3>
                 <Button
                   variant="outline"
                   className="p-4 h-auto flex flex-col items-center justify-center gap-2 text-center"

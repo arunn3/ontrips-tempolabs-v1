@@ -17,12 +17,20 @@ interface AuthProviderProps {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function AuthProvider({ children }: AuthProviderProps) {
+const AuthProvider = ({ children }: AuthProviderProps) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Check if we need to redirect to onboarding
+    const needsOnboarding = localStorage.getItem("needsOnboarding");
+    if (needsOnboarding === "true") {
+      localStorage.removeItem("needsOnboarding");
+      window.location.href = "/onboarding";
+      return;
+    }
+
     // Get initial session
     const getInitialSession = async () => {
       try {
@@ -64,7 +72,8 @@ function AuthProvider({ children }: AuthProviderProps) {
               (profileData.travel_interests &&
                 Object.keys(profileData.travel_interests).length === 0)
             ) {
-              window.location.href = "/onboarding";
+              // Use a flag to indicate redirection is needed instead of immediate redirect
+              localStorage.setItem("needsOnboarding", "true");
             }
           } catch (error) {
             console.error("Error checking onboarding status:", error);
@@ -117,7 +126,8 @@ function AuthProvider({ children }: AuthProviderProps) {
               (profileData.travel_interests &&
                 Object.keys(profileData.travel_interests).length === 0)
             ) {
-              window.location.href = "/onboarding";
+              // Use a flag to indicate redirection is needed instead of immediate redirect
+              localStorage.setItem("needsOnboarding", "true");
             }
           } catch (error) {
             console.error("Error checking onboarding status:", error);
@@ -183,14 +193,14 @@ function AuthProvider({ children }: AuthProviderProps) {
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
+};
 
-function useAuth() {
+const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
-}
+};
 
 export { AuthProvider, useAuth };
